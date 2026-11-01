@@ -28,17 +28,9 @@ private fun provider(id: String): MainAPI {
     return APIHolder.allProviders.firstOrNull { it.sourcePlugin == pluginId && it.name == name }
         ?: error("Provider is unavailable. Reload the extension: $name")
 }
-private fun providerId(api: MainAPI) = "${api.sourcePlugin}:${api.name}"
-private fun item(api: MainAPI, value: SearchResponse): Map<String, Any?> = mapOf(
-    "providerId" to providerId(api), "name" to value.name, "url" to value.url,
-    "posterUrl" to value.posterUrl, "posterHeaders" to (value.posterHeaders ?: emptyMap<String,String>()),
-    "mediaType" to value.type?.name, "year" to null
-)
-private fun providers() = APIHolder.allProviders.map { api -> mapOf(
-    "id" to providerId(api), "pluginId" to api.sourcePlugin, "name" to api.name,
-    "lang" to api.lang, "mainUrl" to api.mainUrl, "hasMainPage" to api.hasMainPage,
-    "usesWebView" to api.usesWebView, "supportedTypes" to api.supportedTypes.map { it.name }
-) }
+
+private fun providers() = APIHolder.allProviders.map { api -> mapProvider(api) }
+
 private fun entryPoint(file: File): String = JarFile(file).use { jar ->
     jar.getJarEntry("manifest.json")?.let { entry ->
         mapper.readTree(jar.getInputStream(entry)).get("pluginClassName")?.asText()?.let { return@use it }
@@ -56,6 +48,7 @@ private fun entryPoint(file: File): String = JarFile(file).use { jar ->
     require(found.size == 1) { "Expected one @CloudstreamPlugin entry point, found ${found.size}" }
     found.single()
 }
+
 private fun unload(id: String) {
     val old = loaded.remove(id) ?: return
     try { old.plugin.beforeUnload() } finally {
@@ -65,6 +58,7 @@ private fun unload(id: String) {
         old.loader.close()
     }
 }
+
 private fun load(params: JsonNode): Any {
     val id = params.path("pluginId").asText()
     val file = File(params.path("path").asText()).canonicalFile
@@ -80,19 +74,34 @@ private fun load(params: JsonNode): Any {
         loaded[id] = Loaded(instance, classLoader)
         if (instance is Plugin) instance.load(Context()) else instance.load()
         APIHolder.initAll()
-        pluginStates[id] = mapOf("pluginId" to id,"loaded" to true,"runtime" to if(prepared.legacy) "dex_jvm" else "jvm","error" to null)
+        pluginStates[id] = mapOf("pluginId" to id, "loaded" to true, "runtime" to if (prepared.legacy) "dex_jvm" else "jvm", "error" to null)
         return providers()
     } catch (e: Throwable) {
         unload(id); loader?.close()
         val cause = generateSequence(e) { it.cause }.last()
         val message = cause.message ?: cause.javaClass.simpleName
-        pluginStates[id] = mapOf("pluginId" to id,"loaded" to false,"runtime" to "unavailable","error" to message)
-        throw IllegalStateException(message,e)
+        pluginStates[id] = mapOf("pluginId" to id, "loaded" to false, "runtime" to "unavailable", "error" to message)
+        throw IllegalStateException(message, e)
     }
 }
 
 private suspend fun handle(method: String, params: JsonNode): Any? = when(method) {
-    "health" -> mapOf("protocolVersion" to 1, "runtime" to "jvm", "upstreamCommit" to "5024ace2922a148d38df2a816b483b529789cf58", "webViewSupported" to false,"legacyDexSupported" to true)
+    "health" -> mapOf(
+        "protocolVersion" to 2,
+        "runtime" to "jvm",
+        "upstreamCommit" to "5024ace2922a148d38df2a816b483b529789cf58",
+        "webViewSupported" to false,
+        "legacyDexSupported" to true,
+        "capabilities" to listOf(
+            "loadLinks",
+            "getMainPage",
+            "search",
+            "load",
+            "discriminatedStreams",
+            "richDetails",
+            "providerCapabilities"
+        )
+    )
     "loadPlugin" -> load(params)
     "unloadPlugin" -> { unload(params.path("pluginId").asText()); true }
     "listProviders" -> providers()
@@ -102,58 +111,68 @@ private suspend fun handle(method: String, params: JsonNode): Any? = when(method
         val page = params.path("page").asInt(1)
         if (api.usesWebView) error("This source requires Android WebView and cannot be searched by the desktop worker yet")
         val result = withTimeout(api.searchTimeoutMs ?: 20_000L) { api.search(params.path("query").asText(), page) }
-        mapOf("items" to result?.items?.map { item(api,it) }.orEmpty(), "hasNext" to (result?.hasNext ?: false))
+        mapOf("items" to result?.items?.map { mapSearchItem(api, it) }.orEmpty(), "hasNext" to (result?.hasNext ?: false))
     }
     "getMainPage" -> {
         val api = provider(params.path("providerId").asText())
         if (api.usesWebView) error("This provider requires WebView; the JVM browser resolver is not implemented yet")
         val page = params.path("page").asInt(1)
         val index = params.path("section").asInt(0).coerceAtLeast(0)
-        val rows = api.mainPage.drop(index).take(1).map { section ->
+        val rows = api.mainPage.drop(index).take(1).flatMap { section ->
             val request = MainPageRequest(section.name, section.data, section.horizontalImages)
             val result = withTimeout(api.getMainPageTimeoutMs ?: 20_000L) { api.getMainPage(page, request) }
-            mapOf("name" to section.name, "items" to result?.items?.flatMap { it.list }?.map { item(api,it) }.orEmpty(), "hasNext" to (result?.hasNext ?: false))
+            val items = result?.items ?: emptyList()
+            if (items.isNotEmpty()) {
+                items.mapIndexed { itemIdx, list ->
+                    mapOf(
+                        "name" to list.name,
+                        "horizontalImages" to list.isHorizontalImages,
+                        "orientation" to if (list.isHorizontalImages) "horizontal" else "vertical",
+                        "rowId" to "${section.name}::$itemIdx::${list.name}",
+                        "items" to list.list.map { mapSearchItem(api, it) },
+                        "hasNext" to (result?.hasNext ?: false)
+                    )
+                }
+            } else {
+                listOf(
+                    mapOf(
+                        "name" to section.name,
+                        "horizontalImages" to section.horizontalImages,
+                        "orientation" to if (section.horizontalImages) "horizontal" else "vertical",
+                        "rowId" to "${section.name}::0",
+                        "items" to emptyList<Any>(),
+                        "hasNext" to false
+                    )
+                )
+            }
         }
-        mapOf("rows" to rows,"nextSection" to index+1,"hasMoreSections" to (index+1 < api.mainPage.size))
+        mapOf("rows" to rows, "nextSection" to index + 1, "hasMoreSections" to (index + 1 < api.mainPage.size))
     }
     "load" -> {
         val api = provider(params.path("providerId").asText())
         val details = api.load(params.path("url").asText()) ?: error("Provider returned no details")
-        val episodes: List<Map<String,Any?>> = when(details) {
-            is MovieLoadResponse -> listOf(mapOf("name" to details.name, "data" to details.dataUrl))
-            is LiveStreamLoadResponse -> listOf(mapOf("name" to details.name, "data" to details.dataUrl))
-            is TvSeriesLoadResponse -> details.episodes.map { episode(it) }
-            is AnimeLoadResponse -> details.episodes.entries.flatMap { (dub, episodes) -> episodes.map { episode(it, "${dub.name} · ") } }
-            else -> emptyList()
-        }
-        mapOf("item" to mapOf("providerId" to providerId(api), "name" to details.name, "url" to details.url,
-            "posterUrl" to details.posterUrl, "posterHeaders" to (details.posterHeaders ?: emptyMap<String,String>()),
-            "mediaType" to details.type.name, "year" to details.year),
-            "plot" to details.plot, "tags" to details.tags.orEmpty(), "episodes" to episodes, "duration" to details.duration)
+        mapDetails(api, details)
     }
     "loadLinks" -> {
         val api = provider(params.path("providerId").asText())
-        if(api.usesWebView) error("This provider requires WebView; use the Android runtime when available")
-        val streams = java.util.Collections.synchronizedList(mutableListOf<Map<String,Any?>>())
-        val subtitles = java.util.Collections.synchronizedList(mutableListOf<Map<String,Any?>>())
-        api.loadLinks(params.path("data").asText(), false, { sub -> subtitles.add(mapOf("lang" to sub.lang, "url" to sub.url, "headers" to (sub.headers ?: emptyMap<String,String>()))) }, { link ->
-            streams.add(mapOf("name" to link.name, "url" to link.url, "referer" to link.referer,
-                "quality" to link.quality, "headers" to link.getAllHeaders(), "streamType" to link.type.name))
+        if (api.usesWebView) error("This provider requires WebView; use the Android runtime when available")
+        val streams = java.util.Collections.synchronizedList(mutableListOf<Map<String, Any?>>())
+        val subtitles = java.util.Collections.synchronizedList(mutableListOf<Map<String, Any?>>())
+        api.loadLinks(params.path("data").asText(), false, { sub ->
+            subtitles.add(mapSubtitle(sub))
+        }, { link ->
+            streams.add(mapStream(link))
         })
         mapOf("streams" to streams, "subtitles" to subtitles)
     }
     else -> error("Unknown method: $method")
 }
-private fun episode(ep: Episode, prefix: String = ""): Map<String,Any?> = mapOf(
-    "name" to "$prefix${ep.name ?: "Episode ${ep.episode ?: ""}"}", "data" to ep.data,
-    "season" to ep.season, "episode" to ep.episode, "posterUrl" to ep.posterUrl
-)
 
 fun main() {
     // Upstream providers log to stdout. Reserve the original stream exclusively for framed RPC.
     val rpcOut = System.out
     System.setOut(System.err)
-    generateSequence(::readLine).forEach { line ->
+    generateSequence(::readlnOrNull).forEach { line ->
         var id: JsonNode? = null
         val response = try {
             val request = mapper.readTree(line)

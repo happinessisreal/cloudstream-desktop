@@ -173,6 +173,11 @@ fn migration_3(tx: &Transaction) -> Result<()> {
                     id: ep_id_explicit,
                     dub_status: None,
                     index: None,
+                    score: None,
+                    rating: None,
+                    description: None,
+                    date: None,
+                    run_time: None,
                     extra: std::collections::BTreeMap::new(),
                 };
 

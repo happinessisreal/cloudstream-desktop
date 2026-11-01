@@ -28,6 +28,7 @@ fn unicode_and_colon_containing_provider_names_and_urls() {
         dub_status: Some(DubStatus::Subbed),
         index: Some(0),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let ep_id = compute_episode_id(&media_id, &ep, None, None);
@@ -46,6 +47,7 @@ fn unicode_and_colon_containing_provider_names_and_urls() {
         unique_url: unique_url.map(|s| s.to_string()),
         media_id: Some(media_id.clone()),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let watch = WatchEntry {
@@ -85,6 +87,7 @@ fn changed_episode_token_retains_progress_and_updates_payload() {
         dub_status: Some(DubStatus::None),
         index: Some(0),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let ep_id_v1 = compute_episode_id(&media_id, &ep_token_v1, None, None);
@@ -100,6 +103,7 @@ fn changed_episode_token_retains_progress_and_updates_payload() {
         unique_url: None,
         media_id: Some(media_id.clone()),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let watch_v1 = WatchEntry {
@@ -129,6 +133,7 @@ fn changed_episode_token_retains_progress_and_updates_payload() {
         dub_status: Some(DubStatus::None),
         index: Some(0),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let ep_id_v2 = compute_episode_id(&media_id, &ep_token_v2, None, None);
@@ -181,6 +186,7 @@ fn same_numbered_episode_in_two_dub_groups_remains_distinct() {
         dub_status: Some(DubStatus::Dubbed),
         index: Some(0),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let ep_subbed = Episode {
@@ -193,6 +199,7 @@ fn same_numbered_episode_in_two_dub_groups_remains_distinct() {
         dub_status: Some(DubStatus::Subbed),
         index: Some(0),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let id_dubbed = compute_episode_id(&media_id, &ep_dubbed, None, None);
@@ -214,6 +221,7 @@ fn same_numbered_episode_in_two_dub_groups_remains_distinct() {
         unique_url: None,
         media_id: Some(media_id.clone()),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     // Watch dubbed to 600 seconds
@@ -266,6 +274,7 @@ fn movie_synthetic_episode_stays_stable() {
         dub_status: None,
         index: None,
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let ep2 = Episode {
@@ -278,6 +287,7 @@ fn movie_synthetic_episode_stays_stable() {
         dub_status: None,
         index: None,
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let id1 = compute_episode_id(&media_id, &ep1, None, None);
@@ -302,6 +312,7 @@ fn duplicate_and_unnumbered_episodes_never_overwrite_each_other() {
         dub_status: None,
         index: Some(0),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let ep1 = Episode {
@@ -314,6 +325,7 @@ fn duplicate_and_unnumbered_episodes_never_overwrite_each_other() {
         dub_status: None,
         index: Some(1),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let ep2 = Episode {
@@ -326,6 +338,7 @@ fn duplicate_and_unnumbered_episodes_never_overwrite_each_other() {
         dub_status: None,
         index: Some(2),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let id0 = compute_episode_id(&media_id, &ep0, None, Some(0));
@@ -353,6 +366,7 @@ fn missing_provider_does_not_delete_progress() {
         dub_status: None,
         index: None,
         extra: BTreeMap::new(),
+        ..Default::default()
     };
     let ep_id = compute_episode_id(&media_id, &ep, None, None);
 
@@ -367,6 +381,7 @@ fn missing_provider_does_not_delete_progress() {
         unique_url: None,
         media_id: Some(media_id.clone()),
         extra: BTreeMap::new(),
+        ..Default::default()
     };
 
     let watch = WatchEntry {

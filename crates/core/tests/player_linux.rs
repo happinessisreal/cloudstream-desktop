@@ -54,6 +54,7 @@ async fn native_mpv_receives_literal_headers_and_accepts_playback_commands() {
         quality: 0,
         headers: BTreeMap::from([("X-Playback-Test".into(), "a,b\\literal".into())]),
         stream_type: "VIDEO".into(),
+        ..Default::default()
     };
     player.play(&stream, &[], None, 0.0).await.unwrap();
     let mut duration = None;

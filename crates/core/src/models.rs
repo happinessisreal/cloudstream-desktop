@@ -13,6 +13,7 @@ pub enum DubStatus {
     None,
     Dubbed,
     Subbed,
+    Both,
 }
 
 impl DubStatus {
@@ -21,12 +22,14 @@ impl DubStatus {
             Self::None => "none",
             Self::Dubbed => "dubbed",
             Self::Subbed => "subbed",
+            Self::Both => "both",
         }
     }
     pub fn parse(s: &str) -> Self {
         match s.to_ascii_lowercase().as_str() {
             "dubbed" | "dub" => Self::Dubbed,
             "subbed" | "sub" => Self::Subbed,
+            "both" | "all" => Self::Both,
             _ => Self::None,
         }
     }
@@ -204,7 +207,57 @@ pub struct InstalledPlugin {
     pub installed_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCapabilities {
+    #[serde(default)]
+    pub has_main_page: bool,
+    #[serde(default)]
+    pub has_quick_search: bool,
+    #[serde(default)]
+    pub has_download_support: bool,
+    #[serde(default)]
+    pub has_chromecast_support: bool,
+    #[serde(default)]
+    pub uses_web_view: bool,
+    #[serde(default)]
+    pub instant_link_loading: bool,
+    #[serde(default)]
+    pub sequential_main_page: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequential_main_page_delay_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequential_main_page_scroll_delay_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vpn_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_sync_names: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_types: Vec<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderTimeouts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_timeout_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_search_timeout_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub get_main_page_timeout_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_timeout_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load_links_timeout_ms: Option<i64>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Provider {
     pub id: String,
@@ -216,9 +269,15 @@ pub struct Provider {
     pub uses_web_view: bool,
     #[serde(default)]
     pub supported_types: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<ProviderCapabilities>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeouts: Option<ProviderTimeouts>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaItem {
     pub provider_id: String,
@@ -233,11 +292,27 @@ pub struct MediaItem {
     pub unique_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rating: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episodes_count: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dub_status: Option<DubStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dub_episodes: Option<BTreeMap<String, i32>>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Episode {
     pub name: String,
@@ -251,45 +326,231 @@ pub struct Episode {
     pub dub_status: Option<DubStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rating: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_time: Option<i32>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TrailerData {
+    pub extractor_url: String,
+    #[serde(default)]
+    pub referer: String,
+    #[serde(default)]
+    pub raw: bool,
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Actor {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActorData {
+    pub actor: Actor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role_string: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_actor: Option<Actor>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SeasonData {
+    pub season: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub episodes: Vec<Episode>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaDetails {
     pub item: MediaItem,
     pub plot: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub episodes: Vec<Episode>,
     pub duration: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unique_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_poster_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_rating: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coming_soon: Option<bool>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sync_data: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trailers: Vec<TrailerData>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actors: Vec<ActorData>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recommendations: Vec<MediaItem>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dub_groups: BTreeMap<String, Vec<Episode>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seasons: Vec<SeasonData>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioTrack {
+    pub url: String,
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistItem {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_us: Option<i64>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DrmData {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub k: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kty: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license_url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub key_request_parameters: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Stream {
     pub name: String,
     pub url: String,
+    #[serde(default)]
     pub referer: String,
+    #[serde(default)]
     pub quality: i32,
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
+    #[serde(default)]
     pub stream_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extractor_data: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_handle: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_tracks: Vec<AudioTrack>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playlist: Option<Vec<PlaylistItem>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drm: Option<DrmData>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Subtitle {
     pub lang: String,
     pub url: String,
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang_tag: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ResolvedLinks {
     pub streams: Vec<Stream>,
     pub subtitles: Vec<Subtitle>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeRow {
+    pub name: String,
+    #[serde(default)]
+    pub items: Vec<MediaItem>,
+    #[serde(default)]
+    pub has_next: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<String>,
+    #[serde(default)]
+    pub horizontal_images: bool,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeResponse {
+    pub rows: Vec<HomeRow>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_section: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_more_sections: Option<bool>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

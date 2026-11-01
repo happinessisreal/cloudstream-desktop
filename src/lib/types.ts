@@ -14,11 +14,13 @@ export interface PluginEntry {
   iconUrl?: string;
   tvTypes?: string[];
 }
+
 export interface Repository {
   url: string;
   manifest: { name: string; description?: string; manifestVersion: number; pluginLists: string[] };
   plugins: PluginEntry[];
 }
+
 export interface InstalledPlugin {
   id: string;
   repositoryUrl: string;
@@ -28,6 +30,33 @@ export interface InstalledPlugin {
   sha256: string;
   installedAt: number;
 }
+
+export interface ProviderCapabilities {
+  hasMainPage: boolean;
+  hasQuickSearch: boolean;
+  hasDownloadSupport: boolean;
+  hasChromecastSupport: boolean;
+  usesWebView: boolean;
+  instantLinkLoading: boolean;
+  sequentialMainPage: boolean;
+  sequentialMainPageDelayMs?: number;
+  sequentialMainPageScrollDelayMs?: number;
+  vpnStatus?: string;
+  providerType?: string;
+  supportedSyncNames?: string[];
+  supportedTypes?: string[];
+  [key: string]: unknown;
+}
+
+export interface ProviderTimeouts {
+  searchTimeoutMs?: number;
+  quickSearchTimeoutMs?: number;
+  getMainPageTimeoutMs?: number;
+  loadTimeoutMs?: number;
+  loadLinksTimeoutMs?: number;
+  [key: string]: unknown;
+}
+
 export interface Provider {
   id: string;
   pluginId: string;
@@ -37,8 +66,12 @@ export interface Provider {
   hasMainPage: boolean;
   usesWebView: boolean;
   supportedTypes: string[];
+  capabilities?: ProviderCapabilities;
+  timeouts?: ProviderTimeouts;
+  [key: string]: unknown;
 }
-export type DubStatus = 'none' | 'dubbed' | 'subbed';
+
+export type DubStatus = 'none' | 'dubbed' | 'subbed' | 'both';
 
 export interface MediaRef {
   mediaId: string;
@@ -79,7 +112,17 @@ export interface MediaItem {
   year?: number;
   uniqueUrl?: string;
   mediaId?: string;
+  score?: number;
+  rating?: number;
+  quality?: string;
+  id?: number;
+  otherName?: string;
+  episodesCount?: number;
+  dubStatus?: DubStatus;
+  dubEpisodes?: Record<string, number>;
+  [key: string]: unknown;
 }
+
 export interface Episode {
   name: string;
   data: string;
@@ -89,14 +132,90 @@ export interface Episode {
   id?: string;
   dubStatus?: DubStatus;
   index?: number;
+  score?: number;
+  rating?: number;
+  description?: string;
+  date?: number;
+  runTime?: number;
+  [key: string]: unknown;
 }
+
+export interface TrailerData {
+  extractorUrl: string;
+  referer?: string;
+  raw?: boolean;
+  headers?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+export interface Actor {
+  name: string;
+  image?: string;
+  [key: string]: unknown;
+}
+
+export interface ActorData {
+  actor: Actor;
+  role?: string;
+  roleString?: string;
+  voiceActor?: Actor;
+  [key: string]: unknown;
+}
+
+export interface SeasonData {
+  season?: number;
+  name?: string;
+  episodes: Episode[];
+  [key: string]: unknown;
+}
+
 export interface Details {
   item: MediaItem;
   plot?: string;
   tags: string[];
   episodes: Episode[];
   duration?: number;
+  uniqueUrl?: string;
+  backgroundPosterUrl?: string;
+  logoUrl?: string;
+  contentRating?: string;
+  comingSoon?: boolean;
+  syncData?: Record<string, string>;
+  trailers?: TrailerData[];
+  actors?: ActorData[];
+  recommendations?: MediaItem[];
+  dubGroups?: Record<string, Episode[]>;
+  seasons?: SeasonData[];
+  [key: string]: unknown;
 }
+
+export type MediaDetails = Details;
+
+export interface AudioTrack {
+  url: string;
+  headers?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+export interface PlaylistItem {
+  url: string;
+  durationUs?: number;
+  [key: string]: unknown;
+}
+
+export interface DrmData {
+  uuid?: string;
+  keyId?: string;
+  kid?: string;
+  key?: string;
+  k?: string;
+  kty?: string;
+  licenseUrl?: string;
+  keyRequestParameters?: Record<string, string>;
+  headers?: Record<string, string>;
+  [key: string]: unknown;
+}
+
 export interface Stream {
   name: string;
   url: string;
@@ -104,21 +223,38 @@ export interface Stream {
   quality: number;
   headers: Record<string, string>;
   streamType: string;
+  kind?: 'direct' | 'hls' | 'dash' | 'torrent' | 'magnet' | 'playlist' | 'drm' | string;
+  source?: string;
+  extractorData?: string;
+  resourceHandle?: string;
+  audioTracks?: AudioTrack[];
+  playlist?: PlaylistItem[];
+  drm?: DrmData;
+  [key: string]: unknown;
 }
+
 export interface Subtitle {
   lang: string;
   url: string;
   headers: Record<string, string>;
+  langTag?: string;
+  [key: string]: unknown;
 }
+
 export interface Links {
   streams: Stream[];
   subtitles: Subtitle[];
+  [key: string]: unknown;
 }
+
+export type ResolvedLinks = Links;
+
 export interface LibraryItem {
   id: string;
   item: MediaItem;
   savedAt: number;
 }
+
 export interface WatchEntry {
   id: string;
   item: MediaItem;
@@ -127,6 +263,7 @@ export interface WatchEntry {
   duration: number;
   watchedAt: number;
 }
+
 export interface RuntimeStatus {
   jvmAvailable: boolean;
   workerAvailable: boolean;
@@ -134,6 +271,7 @@ export interface RuntimeStatus {
   androidAvailable: boolean;
   notes: string[];
 }
+
 export interface Snapshot {
   repositories: Repository[];
   installed: InstalledPlugin[];
@@ -143,19 +281,24 @@ export interface Snapshot {
   extensionStates?: { pluginId: string; loaded: boolean; runtime: string; error?: string }[];
   settings?: Settings;
 }
+
 export type PosterDensity = 'comfortable' | 'compact';
+
 export interface AppearanceSettings {
   posterDensity: PosterDensity;
   [key: string]: unknown;
 }
+
 export interface GlobalSettings {
   appearance: AppearanceSettings;
   [key: string]: unknown;
 }
+
 export interface ProfileSettings {
   appearance?: AppearanceSettings;
   [key: string]: unknown;
 }
+
 export interface Settings {
   schemaVersion: number;
   revision: number;
@@ -163,12 +306,25 @@ export interface Settings {
   profiles: Record<string, ProfileSettings>;
   [key: string]: unknown;
 }
+
 export interface SearchResult {
   items: MediaItem[];
   hasNext: boolean;
 }
+
+export interface HomeRow {
+  name: string;
+  items: MediaItem[];
+  hasNext: boolean;
+  rowId?: string;
+  orientation?: 'horizontal' | 'vertical' | string;
+  horizontalImages?: boolean;
+  [key: string]: unknown;
+}
+
 export interface Home {
-  rows: { name: string; items: MediaItem[]; hasNext: boolean }[];
+  rows: HomeRow[];
   nextSection?: number;
   hasMoreSections?: boolean;
+  [key: string]: unknown;
 }

@@ -53,8 +53,9 @@ impl Worker {
             sequence: 0,
         };
         let health = process.call("health", json!({})).await?;
-        if health.get("protocolVersion").and_then(Value::as_u64) != Some(1) {
-            bail!("Extension worker protocol is incompatible")
+        let protocol_version = health.get("protocolVersion").and_then(Value::as_u64);
+        if !matches!(protocol_version, Some(1 | 2)) {
+            bail!("Extension worker protocol is incompatible (expected version 1 or 2, got {protocol_version:?})")
         }
         Ok(process)
     }

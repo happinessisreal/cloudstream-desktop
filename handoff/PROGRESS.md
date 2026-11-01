@@ -28,5 +28,21 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - `npm run check`: 0 errors, 0 warnings.
   - `npm run test:ui`: 10 passed.
 
+### [T03] Complete typed provider/media/stream bridge
+- **Status:** Completed
+- **Priority:** P0
+- **Completed Substeps:**
+  1. Implemented protocol version 2 negotiation and contract additions in Kotlin mapping, Rust serde models, and TypeScript types. Preserved null vs absent semantics and unknown type strings across boundaries via open `extra` map containers. Added provider capabilities (`hasQuickSearch`, `hasDownloadSupport`, `hasChromecastSupport`, `sequentialMainPage`, `vpnStatus`, `providerType`, `supportedSyncNames`) and granular timeouts (`searchTimeoutMs`, `quickSearchTimeoutMs`, `getMainPageTimeoutMs`, `loadTimeoutMs`, `loadLinksTimeoutMs`).
+  2. Enhanced search item mapping with `score`, `quality`, `year`, `otherName`, `episodesCount`, `dubEpisodes`, and `dubStatus` (`none`, `dubbed`, `subbed`, `both`). Upstream homepage response mapping preserves multiple shelves with individual `rowId`, `horizontalImages`, and `orientation` (`horizontal` / `vertical`).
+  3. Added rich details: `plot`, `tags`, `duration`, `uniqueUrl`, `backgroundPosterUrl`, `logoUrl`, `contentRating`, `comingSoon`, `syncData` (e.g. TMDB, IMDb, MAL), `trailers`, `actors` (with actor/role/voiceActor metadata), `recommendations`, structured `dubGroups`, and `seasons`. Episode names avoid synthetic translated prefix mangling when dub status is modeled explicitly.
+  4. Implemented discriminated streams by `kind` (`direct`, `hls`, `dash`, `torrent`, `magnet`, `playlist`, `drm`) retaining `extractorData`, `source`, separate `audioTracks` with headers, playlist items, DRM credentials (`uuid`, `kid`, `key`, `kty`, `licenseUrl`, `keyRequestParameters`), and subtitle metadata (`langTag`, `headers`).
+  5. Enriched compatibility sample provider `BlenderFilms` to return rich fields across all methods. Added comprehensive Kotlin mapper unit tests and Rust contract deserialization fixtures for enriched payloads, backward compatibility with v1 JSON, and unknown field round-trips. Updated protocol documentation in `protocol/README.md`.
+- **Validation:**
+  - Kotlin worker tests: `cd runtimes/jvm && ./gradlew test` (passed).
+  - Rust tests: `cargo test -p cloudstream-core` (25 passed, 1 ignored).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed, verified full JSON serialization).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (10 passed).
+
 ## Next Ready Tasks
-- **[T03]** Complete typed provider/media/stream bridge (Depends on: T01, T02)
+- **[T04]** Request scheduling, cancellation and incremental results (Depends on: T03)
