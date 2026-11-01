@@ -21,6 +21,7 @@ pub struct App {
     pub resources: PathBuf,
     pub data: PathBuf,
     pub mutation: Mutex<()>,
+    pub client_requests: Mutex<std::collections::HashMap<String, u64>>,
 }
 impl App {
     pub fn open(data: PathBuf, resources: PathBuf) -> Result<Arc<Self>> {
@@ -42,6 +43,7 @@ impl App {
             resources,
             data,
             mutation: Mutex::new(()),
+            client_requests: Mutex::new(std::collections::HashMap::new()),
         }))
     }
     pub async fn status(&self) -> RuntimeStatus {
@@ -98,9 +100,42 @@ impl App {
         )?)
     }
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
-        self.worker
-            .request(&self.store.installed()?, method, params)
-            .await
+        self.call_cancellable(None, method, params).await
+    }
+    pub async fn call_cancellable(
+        &self,
+        request_id: Option<&str>,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        let installed = self.store.installed()?;
+        let id = self.worker.next_id();
+        if let Some(req_id) = request_id {
+            self.client_requests
+                .lock()
+                .await
+                .insert(req_id.to_string(), id);
+        }
+        let res = self
+            .worker
+            .request_with_id(&installed, id, method, params, None)
+            .await;
+        if let Some(req_id) = request_id {
+            self.client_requests.lock().await.remove(req_id);
+        }
+        res
+    }
+    pub async fn cancel_request(&self, request_id: &str) -> Result<bool> {
+        let id_opt = {
+            let mut map = self.client_requests.lock().await;
+            map.remove(request_id)
+        };
+        if let Some(internal_id) = id_opt {
+            self.worker.cancel(internal_id).await;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
     pub async fn extension_states(&self) -> Result<Value> {
         if self.store.installed()?.is_empty() {

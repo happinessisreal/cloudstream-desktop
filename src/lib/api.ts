@@ -6,15 +6,66 @@ declare global {
     __CLOUDSTREAM_TEST__?: (command: string, args: Record<string, unknown>) => Promise<unknown>;
   }
 }
+
+export interface CallOptions {
+  signal?: AbortSignal;
+  requestId?: string;
+}
+
+let requestCounter = 0;
+
 export function nativeAvailable() {
   return isTauri() || Boolean(import.meta.env.DEV && window.__CLOUDSTREAM_TEST__);
 }
-export async function call<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (import.meta.env.DEV && window.__CLOUDSTREAM_TEST__)
-    return (await window.__CLOUDSTREAM_TEST__(command, JSON.parse(JSON.stringify(args)))) as T;
-  if (!isTauri())
-    throw new Error('Open the desktop app to use this feature. Start it with npm run desktop.');
-  return invoke<T>(command, args);
+
+export async function cancelRequest(requestId: string): Promise<boolean> {
+  try {
+    if (import.meta.env.DEV && window.__CLOUDSTREAM_TEST__) {
+      return (await window.__CLOUDSTREAM_TEST__('cancel_request', { requestId })) as boolean;
+    }
+    if (!isTauri()) return false;
+    return await invoke<boolean>('cancel_request', { requestId });
+  } catch {
+    return false;
+  }
+}
+
+export async function call<T>(
+  command: string,
+  args: Record<string, unknown> = {},
+  options?: CallOptions,
+): Promise<T> {
+  const reqId =
+    options?.requestId ??
+    (options?.signal ? `req_${Date.now()}_${++requestCounter}` : undefined);
+  const payload = reqId ? { ...args, requestId: reqId } : args;
+
+  if (options?.signal?.aborted) {
+    if (reqId) void cancelRequest(reqId);
+    throw new DOMException('Request aborted', 'AbortError');
+  }
+
+  const abortHandler = () => {
+    if (reqId) {
+      void cancelRequest(reqId);
+    }
+  };
+
+  if (options?.signal) {
+    options.signal.addEventListener('abort', abortHandler, { once: true });
+  }
+
+  try {
+    if (import.meta.env.DEV && window.__CLOUDSTREAM_TEST__)
+      return (await window.__CLOUDSTREAM_TEST__(command, JSON.parse(JSON.stringify(payload)))) as T;
+    if (!isTauri())
+      throw new Error('Open the desktop app to use this feature. Start it with npm run desktop.');
+    return await invoke<T>(command, payload);
+  } finally {
+    if (options?.signal) {
+      options.signal.removeEventListener('abort', abortHandler);
+    }
+  }
 }
 
 export const defaultSettings: Settings = {

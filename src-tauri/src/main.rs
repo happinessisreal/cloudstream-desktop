@@ -75,8 +75,10 @@ async fn provider_home(
     provider_id: String,
     page: u32,
     section: Option<u32>,
+    request_id: Option<String>,
 ) -> Reply<Value> {
-    app.call(
+    app.call_cancellable(
+        request_id.as_deref(),
         "getMainPage",
         json!({"providerId":provider_id,"page":page,"section":section.unwrap_or(0)}),
     )
@@ -89,8 +91,10 @@ async fn search(
     provider_id: String,
     query: String,
     page: u32,
+    request_id: Option<String>,
 ) -> Reply<Value> {
-    app.call(
+    app.call_cancellable(
+        request_id.as_deref(),
         "search",
         json!({"providerId":provider_id,"query":query,"page":page}),
     )
@@ -102,11 +106,16 @@ async fn load_details(
     app: State<'_, Backend>,
     provider_id: String,
     url: String,
+    request_id: Option<String>,
 ) -> Reply<MediaDetails> {
     serde_json::from_value(
-        app.call("load", json!({"providerId":provider_id,"url":url}))
-            .await
-            .map_err(error)?,
+        app.call_cancellable(
+            request_id.as_deref(),
+            "load",
+            json!({"providerId":provider_id,"url":url}),
+        )
+        .await
+        .map_err(error)?,
     )
     .map_err(error)
 }
@@ -115,13 +124,22 @@ async fn resolve_links(
     app: State<'_, Backend>,
     provider_id: String,
     data: String,
+    request_id: Option<String>,
 ) -> Reply<ResolvedLinks> {
     serde_json::from_value(
-        app.call("loadLinks", json!({"providerId":provider_id,"data":data}))
-            .await
-            .map_err(error)?,
+        app.call_cancellable(
+            request_id.as_deref(),
+            "loadLinks",
+            json!({"providerId":provider_id,"data":data}),
+        )
+        .await
+        .map_err(error)?,
     )
     .map_err(error)
+}
+#[tauri::command]
+async fn cancel_request(app: State<'_, Backend>, request_id: String) -> Reply<bool> {
+    app.cancel_request(&request_id).await.map_err(error)
 }
 #[tauri::command]
 async fn bookmark(app: State<'_, Backend>, item: MediaItem) -> Reply<LibraryItem> {
@@ -199,6 +217,7 @@ fn main() {
             search,
             load_details,
             resolve_links,
+            cancel_request,
             bookmark,
             remove_bookmark,
             play,

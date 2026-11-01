@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import {
     Compass,
     Library,
@@ -86,6 +86,9 @@
   let searchHasNext = $state(false);
   let searchVersion = 0;
   let providerVersion = 0;
+  let searchAbortController: AbortController | null = null;
+  let resolveAbortController: AbortController | null = null;
+  let detailsAbortController: AbortController | null = null;
   let ready = $state(false);
   let busy = $state('');
   let loadingContent = $state(false);
@@ -229,6 +232,9 @@
     }
   }
   function navigate(next: Page) {
+    searchAbortController?.abort();
+    detailsAbortController?.abort();
+    resolveAbortController?.abort();
     page = next;
     searchView = false;
     details = null;
@@ -238,6 +244,9 @@
       void chooseProvider(selectedProvider);
   }
   function openSearch() {
+    searchAbortController?.abort();
+    detailsAbortController?.abort();
+    resolveAbortController?.abort();
     page = 'discover';
     details = null;
     searchView = true;
@@ -333,6 +342,10 @@
           'No active media sources. Open Extensions → Installed to see which sources can run.';
       return;
     }
+    searchAbortController?.abort();
+    searchAbortController = new AbortController();
+    const currentSignal = searchAbortController.signal;
+
     const version = ++searchVersion;
     ++providerVersion;
     submittedQuery = query.trim();
@@ -343,39 +356,60 @@
     searchView = true;
     details = null;
     try {
-      const result = await call<SearchResult>('search', {
-        providerId: selectedProvider,
-        query: query.trim(),
-        page: nextPage,
-      });
-      if (version === searchVersion) {
+      const result = await call<SearchResult>(
+        'search',
+        {
+          providerId: selectedProvider,
+          query: query.trim(),
+          page: nextPage,
+        },
+        { signal: currentSignal },
+      );
+      if (version === searchVersion && !currentSignal.aborted) {
         searchItems = nextPage === 1 ? result.items : [...searchItems, ...result.items];
         searchPage = nextPage;
         searchHasNext = result.hasNext;
       }
     } catch (e) {
+      if (currentSignal.aborted) return;
       if (version === searchVersion) showError(e);
     } finally {
       if (version === searchVersion) loadingContent = false;
     }
   }
   async function openItem(item: MediaItem) {
+    detailsAbortController?.abort();
+    detailsAbortController = new AbortController();
+    const currentSignal = detailsAbortController.signal;
+
     await task('details', async () => {
       details = null;
       links = null;
       selectedEpisode = null;
-      details = await call<Details>('load_details', { providerId: item.providerId, url: item.url });
+      details = await call<Details>(
+        'load_details',
+        { providerId: item.providerId, url: item.url },
+        { signal: currentSignal },
+      );
     });
   }
   async function resolve(episode: Episode) {
     if (!details) return;
     const item = details.item;
+    resolveAbortController?.abort();
+    resolveAbortController = new AbortController();
+    const currentSignal = resolveAbortController.signal;
+
     await task('resolve', async () => {
       selectedEpisode = episode;
-      links = await call<Links>('resolve_links', {
-        providerId: item.providerId,
-        data: episode.data,
-      });
+      links = await call<Links>(
+        'resolve_links',
+        {
+          providerId: item.providerId,
+          data: episode.data,
+        },
+        { signal: currentSignal },
+      );
       if (!links.streams.length) message('This extension returned no playable streams.');
     });
   }
@@ -502,6 +536,11 @@
         showError(e);
       });
     return () => clearTimeout(toastTimer);
+  });
+  onDestroy(() => {
+    searchAbortController?.abort();
+    detailsAbortController?.abort();
+    resolveAbortController?.abort();
   });
   $effect(() => {
     if (modal && dialogElement && !dialogElement.open) {

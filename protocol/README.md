@@ -31,7 +31,9 @@ Success:
       "load",
       "discriminatedStreams",
       "richDetails",
-      "providerCapabilities"
+      "providerCapabilities",
+      "cancellation",
+      "progressEvents"
     ]
   }
 }
@@ -49,13 +51,35 @@ Failure:
 |---|---|---|
 | `health` | None | Protocol version, runtime, upstream commit, WebView availability, capabilities list |
 | `loadPlugin` | `pluginId`, absolute `path` | Registered providers |
-| `unloadPlugin` | `pluginId` | Boolean |
+| `unloadPlugin` | `pluginId` | Boolean (cancels active jobs for the plugin before unloading) |
 | `listProviders` | None | Enriched providers with capabilities and timeouts |
 | `getPluginStates` | None | Per-extension loaded state, actual execution mode and failure message |
 | `getMainPage` | `providerId`, `page`, optional `section` | `{ rows: [{ rowId, name, horizontalImages, orientation, items, hasNext }], nextSection, hasMoreSections }` |
 | `search` | `providerId`, `query`, `page` | `{ items: [MediaItem with score, quality, year, dubStatus, otherName, etc.], hasNext }` |
 | `load` | `providerId`, provider-owned `url` | Enriched details (syncData, trailers, actors, recommendations, dubGroups, seasons, uniqueUrl, backgroundPosterUrl, logoUrl, contentRating) |
-| `loadLinks` | `providerId`, opaque episode `data` | Discriminated streams (direct, HLS, DASH, playlist, torrent, DRM) and subtitles |
+| `loadLinks` | `providerId`, opaque episode `data` | Discriminated streams (direct, HLS, DASH, playlist, torrent, DRM) and subtitles; streams incremental progress events |
+| `cancel` | `id` (target request ID) | `{ "cancelled": boolean, "targetId": string }` |
+
+## Asynchronous Execution & Cancellation
+
+Transport execution is asynchronous and non-blocking:
+- Requests run concurrently in independent coroutines without blocking reading from stdin or writing to stdout.
+- Stdout responses may arrive out-of-order and are demultiplexed by their `id`.
+- The `cancel` method can be sent at any time to cancel an in-flight operation. When cancelled, the running job stops and responds with error code `-32800` (`"Request cancelled"`).
+- In-flight requests are bounded by a concurrency semaphore to prevent runtime resource exhaustion.
+- Extension `loadPlugin` and `unloadPlugin` calls are mutex-protected; unloading a plugin automatically cancels in-flight jobs for its providers before closing its classloader.
+- Sources with `sequentialMainPage = true` enforce per-provider serialization and `sequentialMainPageDelay` throttling without blocking other providers.
+
+## Progress Notifications
+
+During long-running streaming operations such as `loadLinks`, progress notifications are framed as standard JSON-RPC 2.0 notifications (messages with a `method` and no `id`):
+
+```json
+{"jsonrpc":"2.0","method":"progress","params":{"id":12,"type":"stream","stream":{"name":"1080p Stream","url":"https://...","kind":"hls"}}}
+{"jsonrpc":"2.0","method":"progress","params":{"id":12,"type":"subtitle","subtitle":{"name":"English","url":"https://...","langTag":"en"}}}
+```
+
+When all links and subtitles are extracted, the worker sends the final single response containing the complete lists of streams and subtitles.
 
 ## Data Contract Details
 

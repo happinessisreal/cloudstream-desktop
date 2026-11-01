@@ -44,5 +44,22 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Svelte check: `npm run check` (0 errors, 0 warnings).
   - Playwright UI tests: `npm run test:ui` (10 passed).
 
+### [T04] Request scheduling, cancellation and incremental results
+- **Status:** Completed
+- **Priority:** P0
+- **Completed Substeps:**
+  1. Separated worker input reading from job execution in Kotlin worker (`Main.kt`). Reads lines continuously without blocking the stdin reader thread. Jobs execute concurrently inside coroutines launched on a dedicated `workerScope` and write framed responses using a synchronized stdout writer. Added `activeJobs` and `jobPluginMap` tracking with support for out-of-order execution and structured JSON-RPC errors (`-32800` Request cancelled, `-32700` Parse error, `-32600` Invalid request, `-32000` Provider execution/timeout error).
+  2. Implemented `cancel` RPC method in Kotlin worker to abort active coroutines immediately upon request. Added mutex-protected extension lifecycle (`registryMutex`) for `loadPlugin` and `unloadPlugin`. Unloading an extension cancels active jobs running on its providers before closing the classloader. Enforced per-provider mutex serialization and `sequentialMainPageDelay` throttling for `sequentialMainPage = true` sources without blocking other providers. Added capped provider deadlines (`coerceIn(1_000L, 60_000L)`).
+  3. Re-architected Rust worker (`worker.rs`) to multiplex requests asynchronously. Background task reads stdout, demultiplexes out-of-order responses by request ID, forwards `progress` events (such as real-time stream and subtitle discoveries), and safely tolerates malformed stdout lines. Worker crashes or unresponsiveness trigger immediate fail-fast of pending calls once with automatic session recreation and extension restoration on subsequent calls. Bounded in-flight concurrency with a semaphore.
+  4. Exposed cancellation support through the entire stack: `App::call_cancellable` and `App::cancel_request` in Rust core, `cancel_request` command in Tauri 2, `CallOptions` with `AbortSignal` and client `requestId` in typed UI API (`src/lib/api.ts`). Integrated `AbortController` in Svelte UI (`src/App.svelte`) to abort abandoned search and link resolution jobs on new queries, navigation, and component unmount.
+  5. Updated protocol documentation in `protocol/README.md`.
+- **Validation:**
+  - Kotlin tests: `cd runtimes/jvm && ./gradlew test` (10 passed, testing protocol handshake, cancellation, and malformed stdout tolerance).
+  - Rust tests: `cargo test -p cloudstream-core` (31 passed, 1 ignored; including 5 tests in new suite `tests/worker_scheduling.rs` testing out-of-order responses, hung request cancellation, crash recovery, malformed stdout tolerance, and progress events).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (11 passed, including new test for in-flight search cancellation and navigation cleanup).
+
 ## Next Ready Tasks
-- **[T04]** Request scheduling, cancellation and incremental results (Depends on: T03)
+- **[T05]** Preserve and measure extension compatibility (Depends on: T03)

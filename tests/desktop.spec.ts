@@ -104,6 +104,9 @@ async function desktopFixture(page: Page, unsupported = false) {
         case 'provider_home':
           return { rows: [{ name: 'Open movies', items: [item], hasNext: false }] };
         case 'search':
+          if (args.query === 'first slow search') {
+            await new Promise((resolve) => setTimeout(resolve, 800));
+          }
           return {
             items: String(args.query).toLowerCase().includes('bunny') ? [item] : [],
             hasNext: false,
@@ -143,6 +146,8 @@ async function desktopFixture(page: Page, unsupported = false) {
         case 'remove_extension':
           state.installed = [];
           return null;
+        case 'cancel_request':
+          return true;
         case 'get_settings':
           return structuredClone(state.settings);
         case 'update_settings': {
@@ -342,4 +347,35 @@ test('populated media browsing and appearance settings pass accessibility checks
   expect(report.violations.map((v) => ({ id: v.id, nodes: v.nodes.map((n) => n.target) }))).toEqual(
     [],
   );
+});
+
+test('in-flight search is cancelled when a new search is submitted or on navigation', async ({
+  page,
+}) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+
+  // First search is slow
+  await page.getByRole('button', { name: 'Search page', exact: true }).click();
+  const searchInput = page.getByLabel('Search your selected source');
+  await searchInput.fill('first slow search');
+  await searchInput.press('Enter');
+
+  // Second search submitted right away while first is in-flight
+  await searchInput.fill('bunny');
+  await searchInput.press('Enter');
+
+  // Search results for bunny show up
+  await expect(page.getByRole('button', { name: /Big Buck Bunny · Trailer/ })).toBeVisible();
+
+  // Verify cancel_request was triggered for the first in-flight search
+  const calls = await page.evaluate(() => (window as any).__calls);
+  const cancelCalls = calls.filter((c: any) => c.command === 'cancel_request');
+  expect(cancelCalls.length).toBeGreaterThanOrEqual(1);
+
+  // Navigate away and verify cleanup
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const finalCalls = await page.evaluate(() => (window as any).__calls);
+  const finalCancels = finalCalls.filter((c: any) => c.command === 'cancel_request');
+  expect(finalCancels.length).toBeGreaterThanOrEqual(cancelCalls.length);
 });

@@ -8,17 +8,37 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 import com.lagradost.cloudstream3.utils.extractorApis
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.objectweb.asm.*
 import java.io.File
 import java.net.URLClassLoader
+import java.util.concurrent.ConcurrentHashMap
 import java.util.jar.JarFile
 
 private val mapper = jacksonObjectMapper()
 private data class Loaded(val plugin: BasePlugin, val loader: URLClassLoader)
 private val loaded = mutableMapOf<String, Loaded>()
-private val pluginStates = mutableMapOf<String, Map<String,Any?>>()
+private val pluginStates = mutableMapOf<String, Map<String, Any?>>()
+
+private val registryMutex = Mutex()
+private var workerScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+private val activeJobs = ConcurrentHashMap<String, Job>()
+private val jobPluginMap = ConcurrentHashMap<String, String>()
+
+private val providerMutexes = ConcurrentHashMap<String, Mutex>()
+private val lastMainPageTimes = ConcurrentHashMap<String, Long>()
+
+internal var rpcOut: java.io.PrintStream = System.out
+
+fun sendFrame(msg: Map<String, Any?>) {
+    val json = mapper.writeValueAsString(msg)
+    synchronized(rpcOut) {
+        rpcOut.println(json)
+        rpcOut.flush()
+    }
+}
 
 private fun provider(id: String): MainAPI {
     val split = id.indexOf(':')
@@ -50,6 +70,11 @@ private fun entryPoint(file: File): String = JarFile(file).use { jar ->
 }
 
 private fun unload(id: String) {
+    // Cancel in-flight jobs for this plugin before closing classloaders
+    val jobsToCancel = jobPluginMap.filterValues { it == id }.keys.toList()
+    for (jobKey in jobsToCancel) {
+        activeJobs[jobKey]?.cancel(CancellationException("Plugin $id was unloaded"))
+    }
     val old = loaded.remove(id) ?: return
     try { old.plugin.beforeUnload() } finally {
         APIHolder.allProviders.filter { it.sourcePlugin == id }.forEach(APIHolder::removePluginMapping)
@@ -85,7 +110,46 @@ private fun load(params: JsonNode): Any {
     }
 }
 
-private suspend fun handle(method: String, params: JsonNode): Any? = when(method) {
+private fun getCappedTimeout(desired: Long?, defaultMs: Long = 20_000L): Long {
+    val t = desired ?: defaultMs
+    return t.coerceIn(1_000L, 60_000L)
+}
+
+private suspend fun executeGetMainPage(api: MainAPI, page: Int, index: Int): Map<String, Any?> {
+    val rows = api.mainPage.drop(index).take(1).flatMap { section ->
+        val request = MainPageRequest(section.name, section.data, section.horizontalImages)
+        val result = withTimeout(getCappedTimeout(api.getMainPageTimeoutMs, 20_000L)) {
+            api.getMainPage(page, request)
+        }
+        val items = result?.items ?: emptyList()
+        if (items.isNotEmpty()) {
+            items.mapIndexed { itemIdx, list ->
+                mapOf(
+                    "name" to list.name,
+                    "horizontalImages" to list.isHorizontalImages,
+                    "orientation" to if (list.isHorizontalImages) "horizontal" else "vertical",
+                    "rowId" to "${section.name}::$itemIdx::${list.name}",
+                    "items" to list.list.map { mapSearchItem(api, it) },
+                    "hasNext" to (result?.hasNext ?: false)
+                )
+            }
+        } else {
+            listOf(
+                mapOf(
+                    "name" to section.name,
+                    "horizontalImages" to section.horizontalImages,
+                    "orientation" to if (section.horizontalImages) "horizontal" else "vertical",
+                    "rowId" to "${section.name}::0",
+                    "items" to emptyList<Any>(),
+                    "hasNext" to false
+                )
+            )
+        }
+    }
+    return mapOf("rows" to rows, "nextSection" to index + 1, "hasMoreSections" to (index + 1 < api.mainPage.size))
+}
+
+private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?): Any? = when(method) {
     "health" -> mapOf(
         "protocolVersion" to 2,
         "runtime" to "jvm",
@@ -99,92 +163,211 @@ private suspend fun handle(method: String, params: JsonNode): Any? = when(method
             "load",
             "discriminatedStreams",
             "richDetails",
-            "providerCapabilities"
+            "providerCapabilities",
+            "cancellation",
+            "progressEvents"
         )
     )
-    "loadPlugin" -> load(params)
-    "unloadPlugin" -> { unload(params.path("pluginId").asText()); true }
+    "loadPlugin" -> registryMutex.withLock { load(params) }
+    "unloadPlugin" -> registryMutex.withLock { unload(params.path("pluginId").asText()); true }
     "listProviders" -> providers()
     "getPluginStates" -> pluginStates.values.toList()
     "search" -> {
         val api = provider(params.path("providerId").asText())
         val page = params.path("page").asInt(1)
         if (api.usesWebView) error("This source requires Android WebView and cannot be searched by the desktop worker yet")
-        val result = withTimeout(api.searchTimeoutMs ?: 20_000L) { api.search(params.path("query").asText(), page) }
+        val timeout = getCappedTimeout(api.searchTimeoutMs, 20_000L)
+        val result = withTimeout(timeout) { api.search(params.path("query").asText(), page) }
         mapOf("items" to result?.items?.map { mapSearchItem(api, it) }.orEmpty(), "hasNext" to (result?.hasNext ?: false))
     }
     "getMainPage" -> {
-        val api = provider(params.path("providerId").asText())
+        val providerId = params.path("providerId").asText()
+        val api = provider(providerId)
         if (api.usesWebView) error("This provider requires WebView; the JVM browser resolver is not implemented yet")
         val page = params.path("page").asInt(1)
         val index = params.path("section").asInt(0).coerceAtLeast(0)
-        val rows = api.mainPage.drop(index).take(1).flatMap { section ->
-            val request = MainPageRequest(section.name, section.data, section.horizontalImages)
-            val result = withTimeout(api.getMainPageTimeoutMs ?: 20_000L) { api.getMainPage(page, request) }
-            val items = result?.items ?: emptyList()
-            if (items.isNotEmpty()) {
-                items.mapIndexed { itemIdx, list ->
-                    mapOf(
-                        "name" to list.name,
-                        "horizontalImages" to list.isHorizontalImages,
-                        "orientation" to if (list.isHorizontalImages) "horizontal" else "vertical",
-                        "rowId" to "${section.name}::$itemIdx::${list.name}",
-                        "items" to list.list.map { mapSearchItem(api, it) },
-                        "hasNext" to (result?.hasNext ?: false)
-                    )
+        if (api.sequentialMainPage) {
+            val mutex = providerMutexes.computeIfAbsent(providerId) { Mutex() }
+            mutex.withLock {
+                val delayMs = api.sequentialMainPageDelay
+                if (delayMs > 0) {
+                    val last = lastMainPageTimes[providerId] ?: 0L
+                    val elapsed = System.currentTimeMillis() - last
+                    if (elapsed in 1 until delayMs) {
+                        delay(delayMs - elapsed)
+                    }
                 }
-            } else {
-                listOf(
-                    mapOf(
-                        "name" to section.name,
-                        "horizontalImages" to section.horizontalImages,
-                        "orientation" to if (section.horizontalImages) "horizontal" else "vertical",
-                        "rowId" to "${section.name}::0",
-                        "items" to emptyList<Any>(),
-                        "hasNext" to false
-                    )
-                )
+                val res = executeGetMainPage(api, page, index)
+                lastMainPageTimes[providerId] = System.currentTimeMillis()
+                res
             }
+        } else {
+            executeGetMainPage(api, page, index)
         }
-        mapOf("rows" to rows, "nextSection" to index + 1, "hasMoreSections" to (index + 1 < api.mainPage.size))
     }
     "load" -> {
         val api = provider(params.path("providerId").asText())
-        val details = api.load(params.path("url").asText()) ?: error("Provider returned no details")
+        val timeout = getCappedTimeout(api.loadTimeoutMs, 20_000L)
+        val details = withTimeout(timeout) {
+            api.load(params.path("url").asText())
+        } ?: error("Provider returned no details")
         mapDetails(api, details)
     }
     "loadLinks" -> {
         val api = provider(params.path("providerId").asText())
         if (api.usesWebView) error("This provider requires WebView; use the Android runtime when available")
+        val timeout = getCappedTimeout(api.loadLinksTimeoutMs, 30_000L)
         val streams = java.util.Collections.synchronizedList(mutableListOf<Map<String, Any?>>())
         val subtitles = java.util.Collections.synchronizedList(mutableListOf<Map<String, Any?>>())
-        api.loadLinks(params.path("data").asText(), false, { sub ->
-            subtitles.add(mapSubtitle(sub))
-        }, { link ->
-            streams.add(mapStream(link))
-        })
+        withTimeout(timeout) {
+            api.loadLinks(params.path("data").asText(), false, { sub ->
+                val mapped = mapSubtitle(sub)
+                subtitles.add(mapped)
+                if (idNode != null && !idNode.isNull) {
+                    sendFrame(mapOf(
+                        "jsonrpc" to "2.0",
+                        "method" to "progress",
+                        "params" to mapOf(
+                            "id" to idNode,
+                            "type" to "subtitle",
+                            "subtitle" to mapped
+                        )
+                    ))
+                }
+            }, { link ->
+                val mapped = mapStream(link)
+                streams.add(mapped)
+                if (idNode != null && !idNode.isNull) {
+                    sendFrame(mapOf(
+                        "jsonrpc" to "2.0",
+                        "method" to "progress",
+                        "params" to mapOf(
+                            "id" to idNode,
+                            "type" to "stream",
+                            "stream" to mapped
+                        )
+                    ))
+                }
+            })
+        }
         mapOf("streams" to streams, "subtitles" to subtitles)
     }
     else -> error("Unknown method: $method")
 }
 
+private fun dispatchMethod(method: String, params: JsonNode, idNode: JsonNode?) {
+    val idKey = if (idNode != null && !idNode.isNull) idNode.asText() else null
+    val job = workerScope.launch(start = CoroutineStart.LAZY) {
+        try {
+            if (idKey != null) {
+                val providerId = params.path("providerId").takeIf { !it.isMissingNode && !it.isNull }?.asText()
+                if (providerId != null) {
+                    val split = providerId.indexOf(':')
+                    if (split > 0) {
+                        jobPluginMap[idKey] = providerId.substring(0, split)
+                    }
+                }
+            }
+            val result = handle(method, params, idNode)
+            if (idNode != null && !idNode.isNull) {
+                sendFrame(mapOf("jsonrpc" to "2.0", "id" to idNode, "result" to result))
+            }
+        } catch (e: CancellationException) {
+            if (idNode != null && !idNode.isNull) {
+                sendFrame(mapOf(
+                    "jsonrpc" to "2.0",
+                    "id" to idNode,
+                    "error" to mapOf("code" to -32800, "message" to "Request cancelled")
+                ))
+            }
+        } catch (e: TimeoutCancellationException) {
+            if (idNode != null && !idNode.isNull) {
+                sendFrame(mapOf(
+                    "jsonrpc" to "2.0",
+                    "id" to idNode,
+                    "error" to mapOf("code" to -32000, "message" to "Provider action timed out")
+                ))
+            }
+        } catch (e: Throwable) {
+            val cause = generateSequence(e) { it.cause }.last()
+            val message = cause.message ?: cause.javaClass.simpleName
+            if (idNode != null && !idNode.isNull) {
+                sendFrame(mapOf(
+                    "jsonrpc" to "2.0",
+                    "id" to idNode,
+                    "error" to mapOf("code" to -32000, "message" to message)
+                ))
+            }
+        } finally {
+            if (idKey != null) {
+                activeJobs.remove(idKey)
+                jobPluginMap.remove(idKey)
+            }
+        }
+    }
+    if (idKey != null) {
+        activeJobs[idKey] = job
+    }
+    job.start()
+}
+
 fun main() {
     // Upstream providers log to stdout. Reserve the original stream exclusively for framed RPC.
-    val rpcOut = System.out
+    rpcOut = System.out
     System.setOut(System.err)
-    generateSequence(::readlnOrNull).forEach { line ->
-        var id: JsonNode? = null
-        val response = try {
-            val request = mapper.readTree(line)
-            id = request["id"]
-            require(request.path("jsonrpc").asText() == "2.0") { "Expected JSON-RPC 2.0" }
-            val result = runBlocking { withTimeout(120_000) { handle(request.path("method").asText(), request.path("params")) } }
-            mapOf("jsonrpc" to "2.0", "id" to id, "result" to result)
+    val reader = System.`in`.bufferedReader()
+    while (true) {
+        val line = reader.readLine() ?: break
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) continue
+        try {
+            val request = mapper.readTree(trimmed)
+            val idNode = request["id"]
+            val method = request.path("method").asText()
+            val params = request.path("params")
+            if (request.path("jsonrpc").asText() != "2.0" || method.isBlank()) {
+                sendFrame(mapOf(
+                    "jsonrpc" to "2.0",
+                    "id" to idNode,
+                    "error" to mapOf("code" to -32600, "message" to "Invalid Request")
+                ))
+                continue
+            }
+            if (method == "cancel") {
+                val targetId = params.path("id").asText()
+                val targetJob = activeJobs[targetId]
+                val cancelled = if (targetJob != null && targetJob.isActive) {
+                    targetJob.cancel(CancellationException("Cancelled by client"))
+                    true
+                } else {
+                    false
+                }
+                if (idNode != null && !idNode.isNull) {
+                    sendFrame(mapOf(
+                        "jsonrpc" to "2.0",
+                        "id" to idNode,
+                        "result" to mapOf("cancelled" to cancelled, "targetId" to targetId)
+                    ))
+                }
+                continue
+            }
+            dispatchMethod(method, params, idNode)
         } catch (e: Throwable) {
-            e.printStackTrace(System.err)
-            mapOf("jsonrpc" to "2.0", "id" to id, "error" to mapOf("code" to -32000, "message" to (e.cause?.message ?: e.message ?: e.javaClass.simpleName)))
+            sendFrame(mapOf(
+                "jsonrpc" to "2.0",
+                "id" to null,
+                "error" to mapOf("code" to -32700, "message" to (e.message ?: "Parse error"))
+            ))
         }
-        rpcOut.println(mapper.writeValueAsString(response)); rpcOut.flush()
     }
-    loaded.keys.toList().forEach(::unload)
+    runBlocking {
+        withTimeoutOrNull(5000) {
+            activeJobs.values.toList().joinAll()
+        }
+        workerScope.cancel()
+        workerScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        registryMutex.withLock {
+            loaded.keys.toList().forEach(::unload)
+        }
+    }
 }
