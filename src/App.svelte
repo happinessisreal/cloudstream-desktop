@@ -40,7 +40,7 @@
     Grid2X2,
     LayoutGrid,
   } from 'lucide-svelte';
-  import { call, nativeAvailable, emptySnapshot } from './lib/api';
+  import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
   import MediaRail from './lib/MediaRail.svelte';
   import Spotlight from './lib/Spotlight.svelte';
@@ -57,6 +57,8 @@
     PluginEntry,
     InstalledPlugin,
     WatchEntry,
+    PosterDensity,
+    Settings as AppSettingsType,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -66,8 +68,10 @@
   let featuredIndex = $state(0);
   let expandedCategory = $state<number | null>(null);
   let categoryPages = $state<Record<number, number>>({});
-  let posterDensity = $state(
-    localStorage.getItem('cloudstream.poster-density') === 'compact' ? 'compact' : 'comfortable',
+  let posterDensity = $state<PosterDensity>(
+    (localStorage.getItem('cloudstream.poster-density') as PosterDensity) === 'compact'
+      ? 'compact'
+      : 'comfortable',
   );
   let snapshot = $state<Snapshot>(structuredClone(emptySnapshot));
   let providers = $state<Provider[]>([]);
@@ -140,7 +144,16 @@
     toastTimer = setTimeout(() => (notice = ''), 5000);
   }
   function showError(e: unknown) {
-    error = e instanceof Error ? e.message : String(e);
+    error = toErrorMessage(e);
+  }
+  async function setPosterDensity(density: PosterDensity) {
+    posterDensity = density;
+    localStorage.setItem('cloudstream.poster-density', density);
+    try {
+      await updateSettings({ appearance: { posterDensity: density } });
+    } catch (e) {
+      showError(e);
+    }
   }
   async function refresh() {
     if (!nativeAvailable()) {
@@ -148,6 +161,15 @@
       return;
     }
     snapshot = await call<Snapshot>('snapshot');
+    const legacyDensity = localStorage.getItem('cloudstream.poster-density');
+    if (legacyDensity === 'compact' || legacyDensity === 'comfortable') {
+      posterDensity = legacyDensity;
+      if (snapshot.settings?.global?.appearance?.posterDensity !== legacyDensity) {
+        updateSettings({ appearance: { posterDensity: legacyDensity } }).catch(() => {});
+      }
+    } else if (snapshot.settings?.global?.appearance?.posterDensity) {
+      posterDensity = snapshot.settings.global.appearance.posterDensity;
+    }
     providers = await call<Provider[]>('list_providers');
     if (!providers.some((p) => p.id === selectedProvider))
       selectedProvider = providers[0]?.id ?? '';
@@ -1175,10 +1197,7 @@
               {#each ['comfortable', 'compact'] as density}<button
                   aria-pressed={posterDensity === density}
                   class:chosen={posterDensity === density}
-                  onclick={() => {
-                    posterDensity = density;
-                    localStorage.setItem('cloudstream.poster-density', density);
-                  }}
+                  onclick={() => setPosterDensity(density as PosterDensity)}
                   >{#if density === 'comfortable'}<LayoutGrid size={17} />{:else}<Grid2X2
                       size={17}
                     />{/if}{density === 'comfortable' ? 'Comfortable' : 'Compact'}</button

@@ -12,8 +12,32 @@ fn error(error: impl std::fmt::Display) -> String {
 #[tauri::command]
 async fn snapshot(app: State<'_, Backend>) -> Reply<Value> {
     Ok(
-        json!({"repositories":app.store.repositories().map_err(error)?,"installed":app.store.installed().map_err(error)?,"library":app.store.library().map_err(error)?,"history":app.store.history().map_err(error)?,"status":app.status().await,"extensionStates":app.extension_states().await.map_err(error)?}),
+        json!({
+            "repositories": app.store.repositories().map_err(error)?,
+            "installed": app.store.installed().map_err(error)?,
+            "library": app.store.library().map_err(error)?,
+            "history": app.store.history().map_err(error)?,
+            "status": app.status().await,
+            "extensionStates": app.extension_states().await.map_err(error)?,
+            "settings": app.store.get_settings().map_err(error)?
+        }),
     )
+}
+#[tauri::command]
+async fn get_settings(app: State<'_, Backend>, profile_id: Option<String>) -> Reply<Settings> {
+    let _ = profile_id;
+    app.store.get_settings().map_err(error)
+}
+#[tauri::command]
+async fn update_settings(
+    app: State<'_, Backend>,
+    patch: serde_json::Value,
+    scope: Option<String>,
+    profile_id: Option<String>,
+) -> Reply<Settings> {
+    app.store
+        .update_settings(patch, scope.as_deref(), profile_id.as_deref())
+        .map_err(error)
 }
 #[tauri::command]
 async fn add_repository(app: State<'_, Backend>, url: String) -> Reply<Repository> {
@@ -178,7 +202,9 @@ fn main() {
             bookmark,
             remove_bookmark,
             play,
-            player_action
+            player_action,
+            get_settings,
+            update_settings
         ])
         .build(tauri::generate_context!())
         .expect("Could not start Cloudstream Desktop")

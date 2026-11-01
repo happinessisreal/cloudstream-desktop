@@ -105,6 +105,27 @@ export interface Snapshot {
   history: WatchEntry[];
   status: RuntimeStatus;
   extensionStates?: { pluginId: string; loaded: boolean; runtime: string; error?: string }[];
+  settings?: Settings;
+}
+export type PosterDensity = 'comfortable' | 'compact';
+export interface AppearanceSettings {
+  posterDensity: PosterDensity;
+  [key: string]: unknown;
+}
+export interface GlobalSettings {
+  appearance: AppearanceSettings;
+  [key: string]: unknown;
+}
+export interface ProfileSettings {
+  appearance?: AppearanceSettings;
+  [key: string]: unknown;
+}
+export interface Settings {
+  schemaVersion: number;
+  revision: number;
+  global: GlobalSettings;
+  profiles: Record<string, ProfileSettings>;
+  [key: string]: unknown;
 }
 export interface SearchResult {
   items: MediaItem[];

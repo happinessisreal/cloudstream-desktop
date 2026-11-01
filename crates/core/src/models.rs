@@ -164,6 +164,111 @@ pub struct WatchEntry {
     pub watched_at: u64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum PosterDensity {
+    #[default]
+    Comfortable,
+    Compact,
+}
+
+impl PosterDensity {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "comfortable" => Some(Self::Comfortable),
+            "compact" => Some(Self::Compact),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Comfortable => "comfortable",
+            Self::Compact => "compact",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceSettings {
+    #[serde(default)]
+    pub poster_density: PosterDensity,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl Default for AppearanceSettings {
+    fn default() -> Self {
+        Self {
+            poster_density: PosterDensity::Comfortable,
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalSettings {
+    #[serde(default)]
+    pub appearance: AppearanceSettings,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl Default for GlobalSettings {
+    fn default() -> Self {
+        Self {
+            appearance: AppearanceSettings::default(),
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSettings {
+    #[serde(default)]
+    pub appearance: Option<AppearanceSettings>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+pub fn default_settings_schema_version() -> u32 {
+    1
+}
+
+pub fn default_settings_revision() -> u64 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings {
+    #[serde(default = "default_settings_schema_version")]
+    pub schema_version: u32,
+    #[serde(default = "default_settings_revision")]
+    pub revision: u64,
+    #[serde(default)]
+    pub global: GlobalSettings,
+    #[serde(default)]
+    pub profiles: BTreeMap<String, ProfileSettings>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            schema_version: default_settings_schema_version(),
+            revision: default_settings_revision(),
+            global: GlobalSettings::default(),
+            profiles: BTreeMap::new(),
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeStatus {

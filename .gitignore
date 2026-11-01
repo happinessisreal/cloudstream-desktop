@@ -8,6 +8,7 @@ src-tauri/resources/jre/
 test-results/
 playwright-report/
 *.db
+!crates/core/tests/fixtures/*.db
 *.db-shm
 *.db-wal
 .DS_Store

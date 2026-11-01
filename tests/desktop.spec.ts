@@ -72,6 +72,16 @@ async function desktopFixture(page: Page, unsupported = false) {
         : [],
       library: [],
       history: [],
+      settings: {
+        schemaVersion: 1,
+        revision: 1,
+        global: {
+          appearance: {
+            posterDensity: 'comfortable',
+          },
+        },
+        profiles: {},
+      },
       status: {
         jvmAvailable: true,
         workerAvailable: true,
@@ -133,6 +143,17 @@ async function desktopFixture(page: Page, unsupported = false) {
         case 'remove_extension':
           state.installed = [];
           return null;
+        case 'get_settings':
+          return structuredClone(state.settings);
+        case 'update_settings': {
+          const patch = (args.patch as any) || {};
+          const density = patch.appearance?.posterDensity || patch.posterDensity;
+          if (density) {
+            state.settings.global.appearance.posterDensity = density;
+          }
+          state.settings.revision = (state.settings.revision || 1) + 1;
+          return structuredClone(state.settings);
+        }
         case 'add_repository':
           throw new Error('This URL did not return a Cloudstream repository manifest');
         default:
@@ -289,6 +310,10 @@ test('poster density changes browsing layout and persists', async ({ page }) => 
     'aria-pressed',
     'true',
   );
+  const calls = await page.evaluate(() => (window as any).__calls);
+  const updateCall = calls.find((c: any) => c.command === 'update_settings');
+  expect(updateCall).toBeDefined();
+  expect(updateCall.args.patch.appearance.posterDensity).toBe('compact');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
   const compact = (await page.locator('.media-rail .media-card').first().boundingBox())!.width;
   expect(compact).toBeLessThan(comfortable);
