@@ -79,5 +79,22 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
   - Legacy smoke: `python3 scripts/smoke-legacy.py runtimes/jvm/sample/build/libs/desktop-sample.jar --inspect` (passed).
 
+### [T06] Repository and extension management parity
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Implemented repository short code resolution (`resolve_repository_url`, `resolve_shortcode_redirect` in `repository.rs`) supporting `!code` (resolving via `py.md`), `cutt.ly/{code}` short codes, and `cloudstreamrepo://` schemes with bounded redirects (max 5) and timeouts (10s), returning actionable diagnostics if external services are unreachable while keeping ordinary URLs completely offline-safe.
+  2. Implemented repository refresh, duplicate handling (refreshes repository rather than failing), custom display name / rename metadata (`rename_repository`), and share link copying (`https://cs.repo/?{url}`). Removing a repository unloads its plugins but strictly preserves user library bookmarks, watch history, and progress in SQLite.
+  3. Added local package import (`prepare_local`, `install_local` in `repository.rs` and `lib.rs`) for standalone `.jar` and `.cs3` files. Routes through the exact same bounded inspection (`inspect_package`), SHA-256 verification, and atomic storage under `local://packages`, ensuring independent identity even if local and remote extensions share an `internalName`.
+  4. Added provider enable/disable preferences (`set_provider_disabled`, `list_disabled_providers`) and clone-site configuration (`ProviderCloneConfig`, `save_provider_clone`, `delete_provider_clone`). Clones create separate stable identities and stored URL handles without globally mutating the original source.
+  5. Implemented catalog filtering in the UI (`src/App.svelte` and `src/style.css`): filter by name, author, language, extension type (all/providers/extractors), and status (all/installed/updates) that works seamlessly even with zero loaded providers. Added rich card details, provider capability badges, enable/disable toggles, and modal dialogues.
+- **Validation:**
+  - Rust tests: `cargo test -p cloudstream-core` (40 passed, 1 ignored; including 6 new tests in `tests/repository_management.rs`).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (14 passed, including tests for catalog filtering with zero loaded providers, repository rename, share link, local package installation, and provider enable/disable toggle).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+  - Kotlin worker tests: `cd runtimes/jvm && ./gradlew test` (passed).
+
 ## Next Ready Tasks
-- **[T06]** Repository and extension management parity (Depends on: T01, T03, T05)
+- **[T07]** Extension updates, bulk actions and source tester (Depends on: T04, T05, T06)

@@ -93,11 +93,85 @@ impl App {
         if installed.is_empty() {
             return Ok(vec![]);
         }
-        Ok(serde_json::from_value(
+        let mut list: Vec<Provider> = serde_json::from_value(
             self.worker
                 .request(&installed, "listProviders", json!({}))
                 .await?,
-        )?)
+        )?;
+        let disabled_set = self.store.list_disabled_providers()?;
+        for p in &mut list {
+            p.disabled = disabled_set.contains(&p.id);
+        }
+
+        let clones = self.store.list_provider_clones()?;
+        let mut cloned = Vec::new();
+        for clone in clones {
+            if let Some(parent) = list.iter().find(|p| p.id == clone.parent_provider_id) {
+                let mut cp = parent.clone();
+                cp.id = clone.id.clone();
+                cp.name = clone.name.clone();
+                cp.main_url = clone.custom_url.clone();
+                cp.disabled = !clone.enabled || parent.disabled;
+                cp.clone_of = Some(parent.id.clone());
+                cloned.push(cp);
+            }
+        }
+        list.extend(cloned);
+        Ok(list)
+    }
+    pub fn set_provider_enabled(&self, provider_id: &str, enabled: bool) -> Result<()> {
+        self.store.set_provider_disabled(provider_id, !enabled)
+    }
+    pub fn configure_provider_clone(&self, clone: ProviderCloneConfig) -> Result<()> {
+        self.store.save_provider_clone(&clone)
+    }
+    pub fn delete_provider_clone(&self, clone_id: &str) -> Result<()> {
+        self.store.delete_provider_clone(clone_id)
+    }
+    pub async fn add_repository(&self, input: &str) -> Result<Repository> {
+        let _guard = self.mutation.lock().await;
+        let resolved_url = repository::resolve_repository_url(&self.repositories.client, input).await?;
+        let normalized = repository::normalize_repository(&resolved_url)?;
+
+        let existing = self.store.repositories()?.into_iter().find(|r| r.url == normalized);
+        let mut fetched = repository::fetch_repository(&self.repositories.client, &normalized).await?;
+        fetched.updated_at = Some(timestamp_ms());
+
+        if let Some(prev) = existing {
+            fetched.custom_name = prev.custom_name;
+        }
+
+        self.store.put("repository", &fetched.url, &fetched)?;
+        Ok(fetched)
+    }
+    pub async fn refresh_repository(&self, url: &str) -> Result<Repository> {
+        let _guard = self.mutation.lock().await;
+        let normalized = repository::normalize_repository(url)?;
+        let existing = self.store.repositories()?.into_iter().find(|r| r.url == normalized)
+            .context("Repository is not added")?;
+        let mut fetched = repository::fetch_repository(&self.repositories.client, &normalized).await?;
+        fetched.custom_name = existing.custom_name;
+        fetched.updated_at = Some(timestamp_ms());
+        self.store.put("repository", &fetched.url, &fetched)?;
+        Ok(fetched)
+    }
+    pub fn rename_repository(&self, url: &str, name: Option<String>) -> Result<Repository> {
+        let normalized = repository::normalize_repository(url)?;
+        let mut existing = self.store.repositories()?.into_iter().find(|r| r.url == normalized)
+            .context("Repository is not added")?;
+        let clean_name = name.and_then(|n| {
+            let t = n.trim().to_string();
+            if t.is_empty() { None } else { Some(t) }
+        });
+        existing.custom_name = clean_name;
+        self.store.put("repository", &existing.url, &existing)?;
+        Ok(existing)
+    }
+    pub async fn install_local(&self, file_path: &std::path::Path) -> Result<InstalledPlugin> {
+        let _guard = self.mutation.lock().await;
+        let plugin = self.repositories.prepare_local(file_path)?;
+        self.activate(&plugin).await?;
+        Ok(plugin)
     }
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
         self.call_cancellable(None, method, params).await
@@ -108,6 +182,15 @@ impl App {
         method: &str,
         params: Value,
     ) -> Result<Value> {
+        let mut effective_params = params;
+        if let Some(pid) = effective_params.get("providerId").and_then(|v| v.as_str()) {
+            if let Ok(clones) = self.store.list_provider_clones() {
+                if let Some(clone) = clones.into_iter().find(|c| c.id == pid) {
+                    effective_params["providerId"] = json!(clone.parent_provider_id);
+                }
+            }
+        }
+
         let installed = self.store.installed()?;
         let id = self.worker.next_id();
         if let Some(req_id) = request_id {
@@ -118,7 +201,7 @@ impl App {
         }
         let res = self
             .worker
-            .request_with_id(&installed, id, method, params, None)
+            .request_with_id(&installed, id, method, effective_params, None)
             .await;
         if let Some(req_id) = request_id {
             self.client_requests.lock().await.remove(req_id);
@@ -225,6 +308,8 @@ impl App {
             jar_url: Some("bundled://desktop-sample.jar".into()),
             jar_hash: Some(hash.clone()),
             jar_file_size: Some(bytes.len() as u64),
+            source_url: None,
+            extra: std::collections::BTreeMap::new(),
         };
         let plugin = self.repositories.prepare_bytes(
             "bundled://samples",

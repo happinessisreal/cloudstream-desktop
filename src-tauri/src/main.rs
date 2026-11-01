@@ -19,7 +19,8 @@ async fn snapshot(app: State<'_, Backend>) -> Reply<Value> {
             "history": app.store.history().map_err(error)?,
             "status": app.status().await,
             "extensionStates": app.extension_states().await.map_err(error)?,
-            "settings": app.store.get_settings().map_err(error)?
+            "settings": app.store.get_settings().map_err(error)?,
+            "providers": app.providers().await.unwrap_or_default(),
         }),
     )
 }
@@ -41,7 +42,42 @@ async fn update_settings(
 }
 #[tauri::command]
 async fn add_repository(app: State<'_, Backend>, url: String) -> Reply<Repository> {
-    app.repositories.add(&app.store, &url).await.map_err(error)
+    app.add_repository(&url).await.map_err(error)
+}
+#[tauri::command]
+async fn refresh_repository(app: State<'_, Backend>, url: String) -> Reply<Repository> {
+    app.refresh_repository(&url).await.map_err(error)
+}
+#[tauri::command]
+async fn rename_repository(
+    app: State<'_, Backend>,
+    url: String,
+    name: Option<String>,
+) -> Reply<Repository> {
+    app.rename_repository(&url, name).map_err(error)
+}
+#[tauri::command]
+async fn install_local_extension(app: State<'_, Backend>, path: String) -> Reply<InstalledPlugin> {
+    app.install_local(std::path::Path::new(&path)).await.map_err(error)
+}
+#[tauri::command]
+async fn set_provider_enabled(
+    app: State<'_, Backend>,
+    provider_id: String,
+    enabled: bool,
+) -> Reply<()> {
+    app.set_provider_enabled(&provider_id, enabled).map_err(error)
+}
+#[tauri::command]
+async fn configure_provider_clone(
+    app: State<'_, Backend>,
+    clone: ProviderCloneConfig,
+) -> Reply<()> {
+    app.configure_provider_clone(clone).map_err(error)
+}
+#[tauri::command]
+async fn delete_provider_clone(app: State<'_, Backend>, clone_id: String) -> Reply<()> {
+    app.delete_provider_clone(&clone_id).map_err(error)
 }
 #[tauri::command]
 async fn remove_repository(app: State<'_, Backend>, url: String) -> Reply<()> {
@@ -208,11 +244,17 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             snapshot,
             add_repository,
+            refresh_repository,
+            rename_repository,
             remove_repository,
             install_extension,
+            install_local_extension,
             install_sample,
             remove_extension,
             list_providers,
+            set_provider_enabled,
+            configure_provider_clone,
+            delete_provider_clone,
             provider_home,
             search,
             load_details,

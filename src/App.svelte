@@ -39,6 +39,12 @@
     ListFilter,
     Grid2X2,
     LayoutGrid,
+    Edit2,
+    Share2,
+    Upload,
+    ToggleLeft,
+    ToggleRight,
+    Copy,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -59,6 +65,8 @@
     WatchEntry,
     PosterDensity,
     Settings as AppSettingsType,
+    Repository,
+    ProviderCloneConfig,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -94,10 +102,19 @@
   let loadingContent = $state(false);
   let error = $state('');
   let notice = $state('');
-  let modal = $state<'repository' | 'direct' | null>(null);
+  let modal = $state<'repository' | 'direct' | 'rename' | 'localInstall' | 'clone' | null>(null);
   let repoUrl = $state('');
   let directUrl = $state('');
   let repoFilter = $state('');
+  let languageFilter = $state('all');
+  let typeFilter = $state<'all' | 'provider' | 'extractor'>('all');
+  let statusFilter = $state<'all' | 'installed' | 'updates'>('all');
+  let renameRepoUrl = $state('');
+  let renameValue = $state('');
+  let localPackagePath = $state('');
+  let cloneParentProviderId = $state('');
+  let cloneName = $state('');
+  let cloneUrl = $state('');
   let extensionTab = $state<'browse' | 'installed'>('browse');
   let details = $state<Details | null>(null);
   let selectedEpisode = $state<Episode | null>(null);
@@ -121,14 +138,54 @@
   const installedCount = $derived(snapshot.installed.length);
   const jvmCount = $derived(snapshot.installed.filter((p) => p.runtime === 'jvm').length);
   const failedExtensions = $derived(snapshot.extensionStates?.filter((s) => !s.loaded) ?? []);
+
+  const availableLanguages = $derived([
+    'all',
+    ...Array.from(
+      new Set(
+        snapshot.repositories
+          .flatMap((r) => r.plugins)
+          .map((p) => (p.language ? p.language.toLowerCase() : 'multi')),
+      ),
+    ).sort(),
+  ]);
+
   const entries = $derived(
     snapshot.repositories
       .flatMap((repo) => repo.plugins.map((entry) => ({ repo, entry })))
-      .filter(({ entry }) =>
-        `${entry.name} ${entry.language ?? ''} ${entry.description ?? ''}`
-          .toLowerCase()
-          .includes(repoFilter.toLowerCase()),
-      ),
+      .filter(({ repo, entry }) => {
+        const installed = snapshot.installed.find(
+          (p) => p.repositoryUrl === repo.url && p.entry.internalName === entry.internalName,
+        );
+
+        if (repoFilter.trim()) {
+          const q = repoFilter.trim().toLowerCase();
+          const authorStr = (entry.authors ?? []).join(' ').toLowerCase();
+          const match = `${entry.name} ${entry.language ?? ''} ${entry.description ?? ''} ${authorStr}`
+            .toLowerCase()
+            .includes(q);
+          if (!match) return false;
+        }
+
+        if (languageFilter !== 'all') {
+          const lang = (entry.language ?? 'multi').toLowerCase();
+          if (lang !== languageFilter.toLowerCase()) return false;
+        }
+
+        if (typeFilter === 'provider') {
+          if (entry.tvTypes && entry.tvTypes.length === 0) return false;
+        } else if (typeFilter === 'extractor') {
+          if (entry.tvTypes && entry.tvTypes.length > 0) return false;
+        }
+
+        if (statusFilter === 'installed') {
+          if (!installed) return false;
+        } else if (statusFilter === 'updates') {
+          if (!installed || installed.entry.version >= entry.version) return false;
+        }
+
+        return true;
+      }),
   );
   const detailSaved = $derived(
     Boolean(
@@ -326,6 +383,77 @@
       await refresh();
       home = { rows: [] };
       message(`${plugin.entry.name} removed.`);
+    });
+  }
+  async function copyShareLink(repo: Repository) {
+    const link = `https://cs.repo/?${repo.url}`;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      }
+    } catch {
+      // Ignored if browser permissions restrict clipboard
+    }
+    message('Repository share link copied.');
+  }
+  function openRename(repo: Repository) {
+    renameRepoUrl = repo.url;
+    renameValue = repo.customName ?? repo.manifest.name;
+    modal = 'rename';
+  }
+  async function submitRename(event?: SubmitEvent) {
+    event?.preventDefault();
+    if (!renameValue.trim()) return;
+    await task('rename', async () => {
+      await call('rename_repository', { url: renameRepoUrl, name: renameValue.trim() });
+      await refresh();
+      modal = null;
+      message('Repository renamed.');
+    });
+  }
+  async function submitLocalInstall(event?: SubmitEvent) {
+    event?.preventDefault();
+    if (!localPackagePath.trim()) return;
+    await task('localInstall', async () => {
+      await call('install_local_extension', { path: localPackagePath.trim() });
+      await refresh();
+      modal = null;
+      localPackagePath = '';
+      message('Local extension installed.');
+    });
+  }
+  async function toggleProvider(provider: Provider) {
+    await task(`provider-${provider.id}`, async () => {
+      await call('set_provider_enabled', {
+        providerId: provider.id,
+        enabled: Boolean(provider.disabled),
+      });
+      await refresh();
+      message(`Provider ${provider.disabled ? 'enabled' : 'disabled'}.`);
+    });
+  }
+  function openClone(provider: Provider) {
+    cloneParentProviderId = provider.id;
+    cloneName = `${provider.name} (Clone)`;
+    cloneUrl = provider.mainUrl;
+    modal = 'clone';
+  }
+  async function submitClone(event?: SubmitEvent) {
+    event?.preventDefault();
+    if (!cloneName.trim() || !cloneUrl.trim()) return;
+    await task('clone', async () => {
+      const slug = cloneName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const cloneConfig: ProviderCloneConfig = {
+        id: `clone::${cloneParentProviderId}::${slug}`,
+        parentProviderId: cloneParentProviderId,
+        name: cloneName.trim(),
+        customUrl: cloneUrl.trim(),
+        enabled: true,
+      };
+      await call('configure_provider_clone', { clone: cloneConfig });
+      await refresh();
+      modal = null;
+      message('Provider clone configured.');
     });
   }
   async function runSearch(event?: SubmitEvent, nextPage = 1) {
@@ -1066,9 +1194,14 @@
             <h1>Extensions</h1>
             <p>Manage your Cloudstream repositories and extensions.</p>
           </div>
-          <button class="button primary" onclick={() => (modal = 'repository')}
-            ><Plus size={17} />Add repository</button
-          >
+          <div style="display: flex; gap: 10px;">
+            <button class="button secondary" onclick={() => (modal = 'localInstall')}
+              ><Upload size={17} />Import local package</button
+            >
+            <button class="button primary" onclick={() => (modal = 'repository')}
+              ><Plus size={17} />Add repository</button
+            >
+          </div>
         </div>
         <div class="extension-tabs">
           <button class:chosen={extensionTab === 'browse'} onclick={() => (extensionTab = 'browse')}
@@ -1083,10 +1216,16 @@
           {#if !snapshot.repositories.length}<div class="empty-state framed">
               <Globe size={40} strokeWidth={1} />
               <h3>Your sources start here.</h3>
-              <p>Add an existing Cloudstream repository URL to browse its extensions.</p>
-              <button class="button primary" onclick={() => (modal = 'repository')}
-                ><Plus size={17} />Add your first repository</button
-              ><button class="text-button" disabled={!!busy} onclick={addSample}
+              <p>Add an existing Cloudstream repository URL or short-code to browse its extensions.</p>
+              <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+                <button class="button secondary" onclick={() => (modal = 'localInstall')}
+                  ><Upload size={17} />Import local package</button
+                >
+                <button class="button primary" onclick={() => (modal = 'repository')}
+                  ><Plus size={17} />Add your first repository</button
+                >
+              </div>
+              <button class="text-button" disabled={!!busy} onclick={addSample}
                 >Or try the bundled open movie sample <ArrowRight size={15} /></button
               >
             </div>
@@ -1094,17 +1233,25 @@
               {#each snapshot.repositories as repo}<div class="repository-row">
                   <span class="source-icon"><Globe size={22} /></span>
                   <div>
-                    <strong>{repo.manifest.name}</strong><span
+                    <strong>{repo.customName ? `${repo.customName} (${repo.manifest.name})` : repo.manifest.name}</strong><span
                       >{repo.plugins.length} extensions · {new URL(repo.url).hostname}</span
                     >
                   </div>
                   <button
                     class="icon-button"
+                    aria-label={`Rename ${repo.manifest.name}`}
+                    onclick={() => openRename(repo)}><Edit2 size={17} /></button
+                  ><button
+                    class="icon-button"
+                    aria-label={`Share ${repo.manifest.name}`}
+                    onclick={() => copyShareLink(repo)}><Share2 size={17} /></button
+                  ><button
+                    class="icon-button"
                     disabled={!!busy}
                     aria-label={`Refresh ${repo.manifest.name}`}
                     onclick={() =>
                       task('refresh', async () => {
-                        await call('add_repository', { url: repo.url });
+                        await call('refresh_repository', { url: repo.url });
                         await refresh();
                         message('Repository refreshed.');
                       })}><RefreshCw size={17} /></button
@@ -1121,13 +1268,60 @@
                   >
                 </div>{/each}
             </div>
-            <label class="filter-input"
-              ><Search size={17} /><input
-                aria-label="Filter extensions"
-                placeholder="Filter extensions by name or language"
-                bind:value={repoFilter}
-              /></label
-            >
+            <div class="catalog-filter-bar">
+              <label class="filter-input" style="flex: 1; min-width: 220px; margin-bottom: 0;">
+                <Search size={17} />
+                <input
+                  aria-label="Filter extensions"
+                  placeholder="Filter extensions by name or author"
+                  bind:value={repoFilter}
+                />
+              </label>
+              <select
+                aria-label="Filter by language"
+                class="filter-select"
+                bind:value={languageFilter}
+              >
+                <option value="all">All languages</option>
+                {#each availableLanguages.filter((l) => l !== 'all') as lang}
+                  <option value={lang}>{lang.toUpperCase()}</option>
+                {/each}
+              </select>
+              <div class="filter-button-group">
+                <button
+                  class="filter-pill"
+                  class:active={typeFilter === 'all'}
+                  onclick={() => (typeFilter = 'all')}
+                >All types</button>
+                <button
+                  class="filter-pill"
+                  class:active={typeFilter === 'provider'}
+                  onclick={() => (typeFilter = 'provider')}
+                >Providers</button>
+                <button
+                  class="filter-pill"
+                  class:active={typeFilter === 'extractor'}
+                  onclick={() => (typeFilter = 'extractor')}
+                >Extractors</button>
+              </div>
+              <div class="filter-button-group">
+                <button
+                  class="filter-pill"
+                  class:active={statusFilter === 'all'}
+                  onclick={() => (statusFilter = 'all')}
+                >All</button>
+                <button
+                  class="filter-pill"
+                  class:active={statusFilter === 'installed'}
+                  onclick={() => (statusFilter = 'installed')}
+                >Installed</button>
+                <button
+                  class="filter-pill"
+                  class:active={statusFilter === 'updates'}
+                  onclick={() => (statusFilter = 'updates')}
+                >Updates</button>
+              </div>
+            </div>
             <div class="extension-grid">
               {#each entries as { repo, entry }}{@const installed = snapshot.installed.find(
                   (p) =>
@@ -1135,17 +1329,22 @@
                 )}
                 <article class="extension-card">
                   <div class="extension-card-top">
-                    <span class="extension-icon"><Puzzle size={25} /></span><span
+                    <span class="extension-icon"><Puzzle size={25} /></span>
+                    <span
                       class:android={!entry.jarUrl}
                       class="pill">{entry.jarUrl ? 'JVM' : 'Android'}</span
                     >
                   </div>
                   <h3>{entry.name}</h3>
+                  {#if entry.authors?.length}
+                    <span style="font-size: 11px; color: var(--subtle); margin-top: 2px;">by {entry.authors.join(', ')}</span>
+                  {/if}
                   <p>{entry.description ?? `A source from ${repo.manifest.name}.`}</p>
                   <div class="extension-meta">
                     <span>{entry.language?.toUpperCase() ?? 'MULTI'}</span><span
                       >v{entry.version}</span
-                    >{#if entry.status === 0}<span>Disabled upstream</span>{/if}
+                    >{#if entry.jarFileSize || entry.fileSize}<span>{Math.round(((entry.jarFileSize ?? entry.fileSize ?? 0) / 1024))} KB</span>{/if}
+                    {#if entry.status === 0}<span>Disabled upstream</span>{/if}
                   </div>
                   <button
                     class="button secondary full"
@@ -1168,34 +1367,71 @@
             </div>
             {#if !entries.length}<p class="muted">No extensions match this filter.</p>{/if}{/if}
         {:else}{#if installedCount}<div class="installed-list">
-              {#each snapshot.installed as plugin}<article class="installed-row">
-                  <span class="extension-icon"><Puzzle size={24} /></span>
-                  <div class="installed-info">
-                    <h3>{plugin.entry.name}</h3>
-                    <p>
-                      {snapshot.extensionStates?.find((s) => s.pluginId === plugin.id)?.loaded
-                        ? `${plugin.entry.language?.toUpperCase() ?? 'MULTI'} · ${plugin.runtime === 'android' ? 'Desktop DEX compatibility' : 'JVM extension'} · Ready`
-                        : plugin.runtime === 'android'
-                          ? 'Unavailable on this desktop'
-                          : `${plugin.entry.language?.toUpperCase() ?? 'MULTI'} · JVM extension · v${plugin.entry.version}`}
-                    </p>
-                    {#if snapshot.extensionStates?.find((s) => s.pluginId === plugin.id)?.error}<p
-                        class="extension-failure"
+              {#each snapshot.installed as plugin}{@const pluginProviders = (snapshot.providers ?? []).filter((p) => p.pluginId === plugin.id)}
+                <article class="installed-row" style="flex-direction: column; align-items: stretch;">
+                  <div style="display: flex; align-items: flex-start; gap: 16px;">
+                    <span class="extension-icon"><Puzzle size={24} /></span>
+                    <div class="installed-info">
+                      <h3>{plugin.entry.name}</h3>
+                      <p>
+                        {snapshot.extensionStates?.find((s) => s.pluginId === plugin.id)?.loaded
+                          ? `${plugin.entry.language?.toUpperCase() ?? 'MULTI'} · ${plugin.runtime === 'android' ? 'Desktop DEX compatibility' : 'JVM extension'} · Ready`
+                          : plugin.runtime === 'android'
+                            ? 'Unavailable on this desktop'
+                            : `${plugin.entry.language?.toUpperCase() ?? 'MULTI'} · JVM extension · v${plugin.entry.version}`}
+                      </p>
+                      {#if snapshot.extensionStates?.find((s) => s.pluginId === plugin.id)?.error}<p
+                          class="extension-failure"
+                        >
+                          {snapshot.extensionStates?.find((s) => s.pluginId === plugin.id)?.error}
+                        </p>{/if}
+                      <span class="verification"
+                        >{#if plugin.verified}<ShieldCheck size={13} />Package hash verified{:else}<CircleHelp
+                            size={13}
+                          />Repository did not supply a package hash{/if}</span
                       >
-                        {snapshot.extensionStates?.find((s) => s.pluginId === plugin.id)?.error}
-                      </p>{/if}
-                    <span class="verification"
-                      >{#if plugin.verified}<ShieldCheck size={13} />Package hash verified{:else}<CircleHelp
-                          size={13}
-                        />Repository did not supply a package hash{/if}</span
+                    </div>
+                    <button
+                      class="icon-button"
+                      aria-label={`Remove ${plugin.entry.name}`}
+                      disabled={!!busy}
+                      onclick={() => removePlugin(plugin)}><Trash2 size={18} /></button
                     >
                   </div>
-                  <button
-                    class="icon-button"
-                    aria-label={`Remove ${plugin.entry.name}`}
-                    disabled={!!busy}
-                    onclick={() => removePlugin(plugin)}><Trash2 size={18} /></button
-                  >
+                  {#if pluginProviders.length > 0}
+                    <div style="margin-top: 14px; border-top: 1px solid #282834; padding-top: 10px;">
+                      <span style="font-size: 11px; text-transform: uppercase; color: var(--subtle); letter-spacing: 0.5px;">Registered Sources</span>
+                      {#each pluginProviders as provider}
+                        <div class="provider-toggle-row">
+                          <div class="provider-meta-info">
+                            <strong>{provider.name}</strong>
+                            <span style="font-size: 11px; color: var(--subtle);">{provider.mainUrl}</span>
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
+                              {#if provider.capabilities?.hasMainPage}<span class="tag-pill">Main page</span>{/if}
+                              {#if provider.capabilities?.hasQuickSearch}<span class="tag-pill">Quick search</span>{/if}
+                              {#if provider.capabilities?.vpnStatus && provider.capabilities.vpnStatus !== 'None'}<span class="tag-pill warning">VPN: {provider.capabilities.vpnStatus}</span>{/if}
+                              {#if provider.usesWebView}<span class="tag-pill danger">Requires WebView (unsupported)</span>{/if}
+                              {#if provider.cloneOf}<span class="tag-pill">Clone site</span>{/if}
+                            </div>
+                          </div>
+                          <div style="display: flex; gap: 8px; align-items: center;">
+                            <button
+                              class="button small secondary"
+                              aria-label={`Clone ${provider.name}`}
+                              onclick={() => openClone(provider)}><Copy size={13} />Clone</button
+                            >
+                            <button
+                              class="button small"
+                              class:secondary={!provider.disabled}
+                              aria-label={`Toggle ${provider.name}`}
+                              onclick={() => toggleProvider(provider)}
+                              >{provider.disabled ? 'Enable' : 'Disable'}</button
+                            >
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
                 </article>{/each}
             </div>{:else}<div class="empty-state framed">
               <Puzzle size={40} strokeWidth={1} />
@@ -1338,31 +1574,95 @@
 >
   <div class="dialog-heading">
     <span class="extension-icon"
-      >{#if modal === 'repository'}<Globe size={25} />{:else}<Link size={25} />{/if}</span
+      >{#if modal === 'repository' || modal === 'rename'}<Globe size={25} />{:else if modal === 'localInstall' || modal === 'clone'}<Puzzle size={25} />{:else}<Link size={25} />{/if}</span
     ><button class="icon-button" aria-label="Close dialog" onclick={() => (modal = null)}
       ><X size={20} /></button
     >
   </div>
-  <h2>{modal === 'repository' ? 'Bring your sources along.' : 'Something ready to play?'}</h2>
+  <h2>
+    {modal === 'repository'
+      ? 'Bring your sources along.'
+      : modal === 'rename'
+        ? 'Rename repository'
+        : modal === 'localInstall'
+          ? 'Import local extension'
+          : modal === 'clone'
+            ? 'Configure clone site'
+            : 'Something ready to play?'}
+  </h2>
   <p>
     {modal === 'repository'
-      ? 'Paste an existing Cloudstream repository URL. You can choose which extensions to install next.'
-      : 'Open a direct HTTP or HTTPS media URL in your native player.'}
+      ? 'Paste an existing Cloudstream repository URL or short-code (!code, cutt.ly/code).'
+      : modal === 'rename'
+        ? 'Set a custom display name for this repository.'
+        : modal === 'localInstall'
+          ? 'Enter the path to a local .jar or .cs3 extension on your computer.'
+          : modal === 'clone'
+            ? 'Configure an independent mirror or domain clone for this source without mutating the original.'
+            : 'Open a direct HTTP or HTTPS media URL in your native player.'}
   </p>
   {#if error}<div class="dialog-error" role="alert">{error}</div>{/if}
   {#if modal === 'repository'}<form onsubmit={addRepository}>
       <label for="repo-url">Repository URL</label><input
         id="repo-url"
         bind:value={repoUrl}
-        placeholder="https://example.com/repo.json"
+        placeholder="https://example.com/repo.json or !shortcode"
         required
-      /><span class="field-help">Cloudstream repository links are supported too.</span>
+      /><span class="field-help">Repository URLs, cloudstreamrepo:// links, and short-codes (!code, cutt.ly) are supported.</span>
       <div class="dialog-actions">
         <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button
         ><button class="button primary" disabled={!!busy || !repoUrl.trim()}
           >{#if busy === 'repository'}<LoaderCircle class="spin" size={16} />{:else}<Plus
               size={16}
             />{/if}Add repository</button
+        >
+      </div>
+    </form>
+  {:else if modal === 'rename'}<form onsubmit={submitRename}>
+      <label for="repo-rename-input">Display Name</label><input
+        id="repo-rename-input"
+        bind:value={renameValue}
+        placeholder="My Custom Repo Name"
+        required
+      />
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button
+        ><button class="button primary" disabled={!!busy || !renameValue.trim()}>Save name</button>
+      </div>
+    </form>
+  {:else if modal === 'localInstall'}<form onsubmit={submitLocalInstall}>
+      <label for="local-package-input">Local Package Path (.jar or .cs3)</label><input
+        id="local-package-input"
+        bind:value={localPackagePath}
+        placeholder="/home/.../extension.jar"
+        required
+      /><span class="field-help">Validates package integrity and loads the extension into the desktop runtime.</span>
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button
+        ><button class="button primary" disabled={!!busy || !localPackagePath.trim()}
+          >{#if busy === 'localInstall'}<LoaderCircle class="spin" size={16} />{:else}<Upload
+              size={16}
+            />{/if}Install package</button
+        >
+      </div>
+    </form>
+  {:else if modal === 'clone'}<form onsubmit={submitClone}>
+      <label for="clone-name-input">Clone Site Name</label><input
+        id="clone-name-input"
+        bind:value={cloneName}
+        placeholder="Mirror 2"
+        required
+      />
+      <label for="clone-url-input">Custom Mirror URL</label><input
+        id="clone-url-input"
+        bind:value={cloneUrl}
+        placeholder="https://mirror.example.com"
+        required
+      /><span class="field-help">Creates an independent source identity that does not alter the original provider.</span>
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button
+        ><button class="button primary" disabled={!!busy || !cloneName.trim() || !cloneUrl.trim()}
+          >Create clone</button
         >
       </div>
     </form>

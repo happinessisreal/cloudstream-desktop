@@ -94,8 +94,11 @@ async function desktopFixture(page: Page, unsupported = false) {
     window.__CLOUDSTREAM_TEST__ = async (command, args) => {
       (window as any).__calls.push({ command, args });
       switch (command) {
-        case 'snapshot':
-          return structuredClone(state);
+        case 'snapshot': {
+          const snap = structuredClone(state);
+          snap.providers = state.installed.length && !unsupported ? [provider] : [];
+          return snap;
+        }
         case 'list_providers':
           return state.installed.length && !unsupported ? [provider] : [];
         case 'install_sample':
@@ -148,6 +151,44 @@ async function desktopFixture(page: Page, unsupported = false) {
           return null;
         case 'cancel_request':
           return true;
+        case 'refresh_repository':
+          return state.repositories[0] ?? null;
+        case 'rename_repository': {
+          if (state.repositories[0]) {
+            state.repositories[0].customName = (args.name as string) || undefined;
+          }
+          return state.repositories[0] ?? null;
+        }
+        case 'install_local_extension': {
+          const localPlugin = {
+            id: 'local_sample',
+            repositoryUrl: 'local://packages',
+            entry: {
+              url: 'file:///sample.jar',
+              name: 'Local Sample Extension',
+              internalName: 'local_sample',
+              version: 1,
+              status: 1,
+              apiVersion: 1,
+              authors: ['Local Author'],
+              language: 'en',
+            },
+            runtime: 'jvm',
+            verified: true,
+            sha256: 'local_sha',
+            installedAt: 1,
+          };
+          state.installed.push(localPlugin);
+          return localPlugin;
+        }
+        case 'set_provider_enabled': {
+          provider.disabled = !args.enabled;
+          return null;
+        }
+        case 'configure_provider_clone':
+          return null;
+        case 'delete_provider_clone':
+          return null;
         case 'get_settings':
           return structuredClone(state.settings);
         case 'update_settings': {
@@ -378,4 +419,72 @@ test('in-flight search is cancelled when a new search is submitted or on navigat
   const finalCalls = await page.evaluate(() => (window as any).__calls);
   const finalCancels = finalCalls.filter((c: any) => c.command === 'cancel_request');
   expect(finalCancels.length).toBeGreaterThanOrEqual(cancelCalls.length);
+});
+
+test('catalog filtering works with zero loaded providers', async ({ page }) => {
+  await desktopFixture(page, true);
+  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Extensions' })).toBeVisible();
+
+  // We have 2 extensions in the test repo: 'Circle FTP' and 'Another Source'
+  await expect(page.getByRole('heading', { name: 'Circle FTP' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Another Source' })).toBeVisible();
+
+  // Filter by text
+  const filterInput = page.getByLabel('Filter extensions');
+  await filterInput.fill('Circle');
+  await expect(page.getByRole('heading', { name: 'Circle FTP' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Another Source' })).not.toBeVisible();
+
+  // Clear filter
+  await filterInput.fill('');
+  await expect(page.getByRole('heading', { name: 'Another Source' })).toBeVisible();
+
+  // Filter by status: 'Updates' (neither has updates)
+  await page.getByRole('button', { name: 'Updates', exact: true }).click();
+  await expect(page.getByText('No extensions match this filter.')).toBeVisible();
+
+  // Back to All
+  await page.getByRole('button', { name: 'All', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: 'Circle FTP' })).toBeVisible();
+});
+
+test('repository rename, share link, and local extension installation', async ({ page }) => {
+  await desktopFixture(page, true);
+  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+
+  // Rename repository
+  await page.getByRole('button', { name: 'Rename Test sources' }).click();
+  const renameInput = page.getByLabel('Display Name');
+  await expect(renameInput).toBeVisible();
+  await renameInput.fill('Renamed Sources');
+  await page.getByRole('button', { name: 'Save name' }).click();
+  await expect(page.getByText('Repository renamed.')).toBeVisible();
+
+  // Share link
+  await page.getByRole('button', { name: 'Share Test sources' }).click();
+  await expect(page.getByText('Repository share link copied.')).toBeVisible();
+
+  // Local extension import
+  await page.getByRole('button', { name: 'Import local package' }).first().click();
+  const localInput = page.getByLabel('Local Package Path (.jar or .cs3)');
+  await expect(localInput).toBeVisible();
+  await localInput.fill('/tmp/test-plugin.jar');
+  await page.getByRole('button', { name: 'Install package' }).click();
+  await expect(page.getByText('Local extension installed.')).toBeVisible();
+});
+
+test('provider toggle enables and disables source', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await page.getByRole('button', { name: /Installed/ }).click();
+
+  await expect(page.getByRole('heading', { name: 'Blender Open Movies' })).toBeVisible();
+  const toggleBtn = page.getByRole('button', { name: 'Toggle Blender Open Movies' });
+  await expect(toggleBtn).toBeVisible();
+  await expect(toggleBtn).toHaveText('Disable');
+
+  await toggleBtn.click();
+  await expect(page.getByText('Provider disabled.')).toBeVisible();
 });

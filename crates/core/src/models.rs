@@ -171,6 +171,10 @@ pub struct PluginEntry {
     pub jar_url: Option<String>,
     pub jar_hash: Option<String>,
     pub jar_file_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 fn default_status() -> i32 {
     1
@@ -185,6 +189,12 @@ pub struct Repository {
     pub url: String,
     pub manifest: RepositoryManifest,
     pub plugins: Vec<PluginEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<u64>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -304,6 +314,25 @@ pub struct ProviderTimeouts {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCloneConfig {
+    pub id: String,
+    pub parent_provider_id: String,
+    pub name: String,
+    pub custom_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credentials_handle: Option<String>,
+    #[serde(default = "default_clone_enabled")]
+    pub enabled: bool,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+fn default_clone_enabled() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Provider {
@@ -316,6 +345,10 @@ pub struct Provider {
     pub uses_web_view: bool,
     #[serde(default)]
     pub supported_types: Vec<String>,
+    #[serde(default)]
+    pub disabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clone_of: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<ProviderCapabilities>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

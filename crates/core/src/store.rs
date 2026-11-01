@@ -327,8 +327,60 @@ impl Store {
         Ok(())
     }
 
+    pub fn get<T: DeserializeOwned>(&self, kind: &str, id: &str) -> Result<Option<T>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut statement = connection
+            .prepare("SELECT value FROM records WHERE kind=?1 AND id=?2")?;
+        let mut rows = statement.query(params![kind, id])?;
+        if let Some(row) = rows.next()? {
+            let s: String = row.get(0)?;
+            let item = serde_json::from_str(&s).context("Stored record could not be read")?;
+            Ok(Some(item))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn repositories(&self) -> Result<Vec<Repository>> {
         self.list("repository")
+    }
+
+    pub fn list_disabled_providers(&self) -> Result<std::collections::HashSet<String>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut statement = connection
+            .prepare("SELECT id FROM records WHERE kind='provider_disabled'")?;
+        let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
+        let mut set = std::collections::HashSet::new();
+        for r in rows {
+            set.insert(r?);
+        }
+        Ok(set)
+    }
+
+    pub fn set_provider_disabled(&self, provider_id: &str, disabled: bool) -> Result<()> {
+        if disabled {
+            self.put("provider_disabled", provider_id, &true)
+        } else {
+            self.remove("provider_disabled", provider_id)
+        }
+    }
+
+    pub fn list_provider_clones(&self) -> Result<Vec<ProviderCloneConfig>> {
+        self.list("provider_clone")
+    }
+
+    pub fn save_provider_clone(&self, clone: &ProviderCloneConfig) -> Result<()> {
+        self.put("provider_clone", &clone.id, clone)
+    }
+
+    pub fn delete_provider_clone(&self, clone_id: &str) -> Result<()> {
+        self.remove("provider_clone", clone_id)
     }
 
     pub fn installed(&self) -> Result<Vec<InstalledPlugin>> {

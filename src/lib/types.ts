@@ -11,14 +11,32 @@ export interface PluginEntry {
   jarUrl?: string;
   jarHash?: string;
   fileHash?: string;
+  fileSize?: number;
+  jarFileSize?: number;
   iconUrl?: string;
   tvTypes?: string[];
+  sourceUrl?: string;
+  repositoryUrl?: string;
+  [key: string]: unknown;
 }
 
 export interface Repository {
   url: string;
-  manifest: { name: string; description?: string; manifestVersion: number; pluginLists: string[] };
+  manifest: { name: string; description?: string; iconUrl?: string; manifestVersion: number; pluginLists: string[] };
   plugins: PluginEntry[];
+  customName?: string;
+  updatedAt?: number;
+  [key: string]: unknown;
+}
+
+export interface ProviderCloneConfig {
+  id: string;
+  parentProviderId: string;
+  name: string;
+  customUrl: string;
+  credentialsHandle?: string;
+  enabled: boolean;
+  [key: string]: unknown;
 }
 
 export interface InstalledPlugin {
@@ -66,6 +84,8 @@ export interface Provider {
   hasMainPage: boolean;
   usesWebView: boolean;
   supportedTypes: string[];
+  disabled?: boolean;
+  cloneOf?: string;
   capabilities?: ProviderCapabilities;
   timeouts?: ProviderTimeouts;
   [key: string]: unknown;
@@ -296,6 +316,7 @@ export interface Snapshot {
   status: RuntimeStatus;
   extensionStates?: ExtensionState[];
   settings?: Settings;
+  providers?: Provider[];
 }
 
 export type PosterDensity = 'comfortable' | 'compact';
