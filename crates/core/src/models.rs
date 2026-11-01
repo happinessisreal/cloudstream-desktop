@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
@@ -205,6 +206,52 @@ pub struct InstalledPlugin {
     pub verified: bool,
     pub plugin_class: Option<String>,
     pub installed_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionState {
+    pub plugin_id: String,
+    pub loaded: bool,
+    pub runtime: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub providers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extractors: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_unavailable_apis: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actionable_failure: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCapabilityReport {
+    pub sha256: String,
+    pub format: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_version: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_class: Option<String>,
+    pub legacy: bool,
+    pub requires_resources: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unavailable_apis: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actionable_failure: Option<String>,
+    pub plugin_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

@@ -61,5 +61,23 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Svelte check: `npm run check` (0 errors, 0 warnings).
   - Playwright UI tests: `npm run test:ui` (11 passed, including new test for in-flight search cancellation and navigation cleanup).
 
+### [T05] Preserve and measure extension compatibility
+- **Status:** Completed
+- **Priority:** P0
+- **Completed Substeps:**
+  1. Implemented pre-flight package inspection (`inspectPackage`) in `LegacyDex.kt` and `Main.kt`. Extracts package format (`dex` vs `jar`), `apiVersion`, `entryClass`, `requiresResources`, `unavailableApis`, `actionableFailure`, `pluginType` (`provider`, `extractor`, `importer`, `empty`), and SHA-256 without loading. Short-circuits cleanly on fatal Android resource requirements before DEX-to-JAR conversion.
+  2. Preserved content-addressed translation cache (`$hash.desktop-dex-v2.jar`) and `restoreJvmMethodNames` bytecode transformer. Added atomic registration rollback on extension load failure: worker tracks previously registered providers and extractors and reverts partial registrations if plugin initialization fails.
+  3. Added `ExtensionState` and `PluginCapabilityReport` to Rust models (`models.rs`) and UI types (`src/lib/types.ts`). Enriched worker `getPluginStates` and exposed `"inspectPackage"` via worker API.
+  4. Created lawful compatibility test fixtures in `crates/core/tests/fixtures/compatibility_manifest.json` recording 7 lawful fixtures and operations. Added comprehensive tests in `crates/core/tests/compatibility.rs` and `LegacyDexTest.kt` verifying capability extraction, resource rejection, package format handling, and atomic rollback.
+  5. Updated `scripts/smoke-legacy.py` with `--inspect` flag and resilient stdout parsing. Updated `protocol/README.md`.
+- **Validation:**
+  - Kotlin worker tests: `cd runtimes/jvm && ./gradlew test` (passed, 12 tests in `LegacyDexTest`).
+  - Rust tests: `cargo test -p cloudstream-core` (34 passed, 1 ignored; 11 passed in `compatibility.rs`).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (11 passed).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+  - Legacy smoke: `python3 scripts/smoke-legacy.py runtimes/jvm/sample/build/libs/desktop-sample.jar --inspect` (passed).
+
 ## Next Ready Tasks
-- **[T05]** Preserve and measure extension compatibility (Depends on: T03)
+- **[T06]** Repository and extension management parity (Depends on: T01, T03, T05)

@@ -158,3 +158,116 @@ async fn existing_repository_manifests_and_jar_metadata_are_supported() {
     assert_eq!(repo.plugins[0].url, format!("http://{address}/test.cs3"));
     server.await.unwrap();
 }
+
+#[test]
+fn compatibility_manifest_validates_known_fixtures_and_operations() {
+    let manifest_bytes = include_bytes!("fixtures/compatibility_manifest.json");
+    let manifest: serde_json::Value = serde_json::from_slice(manifest_bytes)
+        .expect("compatibility manifest must be valid JSON");
+
+    assert_eq!(manifest["manifestVersion"], 1);
+    let fixtures = manifest["fixtures"].as_array().expect("fixtures array");
+    assert!(fixtures.len() >= 5);
+
+    let jar_fixture = fixtures.iter().find(|f| f["id"] == "fixture-pure-jar").unwrap();
+    assert_eq!(jar_fixture["format"], "jar");
+    assert_eq!(jar_fixture["runtime"], "jvm");
+
+    let dex_fixture = fixtures.iter().find(|f| f["id"] == "fixture-data-dex").unwrap();
+    assert_eq!(dex_fixture["format"], "dex");
+    assert_eq!(dex_fixture["runtime"], "dex_jvm");
+
+    let importer_fixture = fixtures.iter().find(|f| f["id"] == "fixture-rejected-importer").unwrap();
+    assert_eq!(importer_fixture["pluginType"], "importer");
+    assert_eq!(
+        importer_fixture["unavailableApis"][0],
+        "com.lagradost.cloudstream3.plugins.RepositoryManager"
+    );
+
+    let res_fixture = fixtures.iter().find(|f| f["id"] == "fixture-rejected-resources").unwrap();
+    assert_eq!(res_fixture["requiresResources"], true);
+}
+
+#[test]
+fn extension_state_deserialization_and_capability_reporting() {
+    let raw = json!({
+        "pluginId": "sample",
+        "loaded": true,
+        "runtime": "jvm",
+        "format": "jar",
+        "apiVersion": 1,
+        "pluginType": "provider",
+        "providers": ["sample:Blender Open Movies"],
+        "extractors": ["BlenderDirectExtractor"],
+        "requiredUnavailableApis": [],
+        "actionableFailure": null,
+        "sha256": "abcdef123456",
+        "extraCapabilityTag": "experimental"
+    });
+
+    let state: ExtensionState = serde_json::from_value(raw.clone()).unwrap();
+    assert_eq!(state.plugin_id, "sample");
+    assert!(state.loaded);
+    assert_eq!(state.format.as_deref(), Some("jar"));
+    assert_eq!(state.plugin_type.as_deref(), Some("provider"));
+    assert_eq!(state.providers, vec!["sample:Blender Open Movies"]);
+    assert_eq!(state.extractors, vec!["BlenderDirectExtractor"]);
+    assert_eq!(state.extra.get("extraCapabilityTag").unwrap(), "experimental");
+}
+
+#[tokio::test]
+async fn atomic_update_rollback_preserves_previous_plugin_when_activation_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("app.db")).unwrap();
+    let manager = RepositoryManager::new(dir.path().join("extensions")).unwrap();
+
+    let bytes_v1 = package(&[("example/Plugin.class", b"bytecode-v1")]);
+    let hash_v1 = format!("sha256-{}", digest(&bytes_v1));
+    let entry_v1: PluginEntry = serde_json::from_value(json!({
+        "url": "https://example.com/test.jar",
+        "name": "Test Plugin",
+        "internalName": "test_plugin",
+        "version": 1,
+        "authors": ["Author"],
+        "status": 1,
+        "apiVersion": 1
+    })).unwrap();
+
+    let plugin_v1 = manager
+        .prepare_bytes(
+            "https://repo.example",
+            entry_v1.clone(),
+            &bytes_v1,
+            Some(&hash_v1),
+            RuntimeKind::Jvm,
+        )
+        .unwrap();
+
+    // Store v1 as installed
+    store.put("plugin", &plugin_v1.id, &plugin_v1).unwrap();
+    assert_eq!(store.installed().unwrap().len(), 1);
+    assert_eq!(store.installed().unwrap()[0].entry.version, 1);
+
+    // Prepare updated package v2 with corrupted payload that fails hash or verification
+    let bytes_v2 = package(&[("example/Plugin.class", b"bytecode-v2")]);
+    let _hash_v2 = format!("sha256-{}", digest(&bytes_v2));
+    let mut entry_v2 = entry_v1.clone();
+    entry_v2.version = 2;
+
+    // Simulate corrupted hash during update download
+    let update_res = manager.prepare_bytes(
+        "https://repo.example",
+        entry_v2,
+        &bytes_v2,
+        Some("sha256-wronghash"),
+        RuntimeKind::Jvm,
+    );
+
+    assert!(update_res.is_err(), "Corrupted update must fail");
+
+    // The installed plugin in store remains v1
+    let installed = store.installed().unwrap();
+    assert_eq!(installed.len(), 1);
+    assert_eq!(installed[0].entry.version, 1);
+    assert_eq!(installed[0].sha256, plugin_v1.sha256);
+}

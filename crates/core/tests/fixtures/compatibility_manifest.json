@@ -1,0 +1,79 @@
+{
+  "manifestVersion": 1,
+  "description": "Compatibility manifest for Cloudstream Desktop runtime verification",
+  "fixtures": [
+    {
+      "id": "fixture-pure-jar",
+      "format": "jar",
+      "runtime": "jvm",
+      "apiVersion": 1,
+      "pluginType": "provider",
+      "requiresResources": false,
+      "unavailableApis": [],
+      "operations": ["install", "loadPlugin", "listProviders", "search", "load", "loadLinks", "unloadPlugin"]
+    },
+    {
+      "id": "fixture-data-dex",
+      "format": "dex",
+      "runtime": "dex_jvm",
+      "apiVersion": 1,
+      "pluginType": "provider",
+      "requiresResources": false,
+      "unavailableApis": [],
+      "operations": ["install", "translateDex", "restoreJvmMethodNames", "loadPlugin", "listProviders"]
+    },
+    {
+      "id": "fixture-shared-extractor",
+      "format": "jar",
+      "runtime": "jvm",
+      "apiVersion": 1,
+      "pluginType": "extractor",
+      "requiresResources": false,
+      "unavailableApis": [],
+      "operations": ["registerExtractor", "sharedVisibility", "unloadExtractor"]
+    },
+    {
+      "id": "fixture-sanitized-abi",
+      "format": "jar",
+      "runtime": "jvm",
+      "apiVersion": 1,
+      "pluginType": "provider",
+      "requiresResources": false,
+      "unavailableApis": [],
+      "operations": ["restoreJvmMethodNames", "roundTripValueClass"]
+    },
+    {
+      "id": "fixture-rejected-resources",
+      "format": "dex",
+      "runtime": "unavailable",
+      "apiVersion": 2,
+      "pluginType": "unknown",
+      "requiresResources": true,
+      "unavailableApis": ["android.content.res.Resources"],
+      "actionableFailure": "This extension requires Android resources; the full Android runtime is not available yet",
+      "operations": ["rejectBeforeLoadingCode"]
+    },
+    {
+      "id": "fixture-rejected-importer",
+      "format": "dex",
+      "runtime": "unavailable",
+      "apiVersion": 1,
+      "pluginType": "importer",
+      "requiresResources": false,
+      "unavailableApis": ["com.lagradost.cloudstream3.plugins.RepositoryManager"],
+      "actionableFailure": "This is a repository-import extension, not a media source. Add its repository URLs directly; Android repository-import plugins are not supported yet",
+      "operations": ["rejectImporterExtension"]
+    },
+    {
+      "id": "fixture-rejected-webview",
+      "format": "dex",
+      "runtime": "unavailable",
+      "apiVersion": 1,
+      "pluginType": "unknown",
+      "requiresResources": false,
+      "unavailableApis": ["android.webkit.WebView"],
+      "actionableFailure": "This extension needs the Android API android.webkit.WebView; full Android features are not supported by the desktop bridge",
+      "operations": ["rejectWebViewExtension"]
+    }
+  ]
+}

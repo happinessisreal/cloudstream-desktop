@@ -81,6 +81,10 @@ private fun unload(id: String) {
         APIHolder.allProviders.withLock { APIHolder.allProviders.removeAll { it.sourcePlugin == id } }
         extractorApis.withLock { extractorApis.removeAll { it.sourcePlugin == id } }
         old.loader.close()
+        val existing = pluginStates[id]
+        if (existing != null) {
+            pluginStates[id] = existing + mapOf("loaded" to false)
+        }
     }
 }
 
@@ -90,8 +94,10 @@ private fun load(params: JsonNode): Any {
     require(file.isFile) { "Extension file is missing" }
     unload(id)
     var loader: URLClassLoader? = null
+    var inspection: PackageInspection? = null
     try {
         val prepared = preparePackage(file)
+        inspection = prepared.inspection
         val classLoader = URLClassLoader(arrayOf(prepared.file.toURI().toURL()), BasePlugin::class.java.classLoader)
         loader = classLoader
         val instance = classLoader.loadClass(prepared.entryClass ?: entryPoint(prepared.file)).getDeclaredConstructor().newInstance() as BasePlugin
@@ -99,13 +105,60 @@ private fun load(params: JsonNode): Any {
         loaded[id] = Loaded(instance, classLoader)
         if (instance is Plugin) instance.load(Context()) else instance.load()
         APIHolder.initAll()
-        pluginStates[id] = mapOf("pluginId" to id, "loaded" to true, "runtime" to if (prepared.legacy) "dex_jvm" else "jvm", "error" to null)
+
+        val registeredProviders = APIHolder.allProviders.filter { it.sourcePlugin == id }.map { mapProvider(it) }
+        val registeredExtractors = extractorApis.filter { it.sourcePlugin == id }.map { it.name }
+
+        val pluginType = when {
+            registeredProviders.isNotEmpty() -> "provider"
+            registeredExtractors.isNotEmpty() -> "extractor"
+            else -> "empty"
+        }
+
+        pluginStates[id] = mapOf(
+            "pluginId" to id,
+            "loaded" to true,
+            "runtime" to if (prepared.legacy) "dex_jvm" else "jvm",
+            "format" to prepared.inspection.format,
+            "apiVersion" to prepared.inspection.apiVersion,
+            "pluginType" to pluginType,
+            "providers" to registeredProviders.map { it["id"] },
+            "extractors" to registeredExtractors,
+            "requiredUnavailableApis" to emptyList<String>(),
+            "actionableFailure" to null,
+            "sha256" to prepared.inspection.sha256,
+            "error" to null
+        )
         return providers()
     } catch (e: Throwable) {
-        unload(id); loader?.close()
+        // Rollback any partially registered providers or extractors
+        APIHolder.allProviders.withLock {
+            APIHolder.allProviders.removeAll { it.sourcePlugin == id }
+        }
+        extractorApis.withLock {
+            extractorApis.removeAll { it.sourcePlugin == id }
+        }
+        unload(id)
+        loader?.close()
         val cause = generateSequence(e) { it.cause }.last()
         val message = cause.message ?: cause.javaClass.simpleName
-        pluginStates[id] = mapOf("pluginId" to id, "loaded" to false, "runtime" to "unavailable", "error" to message)
+
+        val fallbackInspection = inspection ?: try { inspectPackage(file) } catch (_: Throwable) { null }
+
+        pluginStates[id] = mapOf(
+            "pluginId" to id,
+            "loaded" to false,
+            "runtime" to "unavailable",
+            "format" to (fallbackInspection?.format ?: "unknown"),
+            "apiVersion" to fallbackInspection?.apiVersion,
+            "pluginType" to (fallbackInspection?.pluginType ?: "unknown"),
+            "providers" to emptyList<String>(),
+            "extractors" to emptyList<String>(),
+            "requiredUnavailableApis" to (fallbackInspection?.unavailableApis ?: emptyList()),
+            "actionableFailure" to message,
+            "sha256" to (fallbackInspection?.sha256 ?: ""),
+            "error" to message
+        )
         throw IllegalStateException(message, e)
     }
 }
@@ -165,9 +218,14 @@ private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?):
             "richDetails",
             "providerCapabilities",
             "cancellation",
-            "progressEvents"
+            "progressEvents",
+            "inspectPackage"
         )
     )
+    "inspectPackage" -> {
+        val file = File(params.path("path").asText()).canonicalFile
+        inspectPackage(file).toMap()
+    }
     "loadPlugin" -> registryMutex.withLock { load(params) }
     "unloadPlugin" -> registryMutex.withLock { unload(params.path("pluginId").asText()); true }
     "listProviders" -> providers()

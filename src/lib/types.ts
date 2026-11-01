@@ -272,13 +272,29 @@ export interface RuntimeStatus {
   notes: string[];
 }
 
+export interface ExtensionState {
+  pluginId: string;
+  loaded: boolean;
+  runtime: string;
+  format?: 'dex' | 'jar' | string;
+  apiVersion?: number;
+  pluginType?: 'provider' | 'extractor' | 'importer' | 'empty' | string;
+  providers?: string[];
+  extractors?: string[];
+  requiredUnavailableApis?: string[];
+  actionableFailure?: string;
+  sha256?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
 export interface Snapshot {
   repositories: Repository[];
   installed: InstalledPlugin[];
   library: LibraryItem[];
   history: WatchEntry[];
   status: RuntimeStatus;
-  extensionStates?: { pluginId: string; loaded: boolean; runtime: string; error?: string }[];
+  extensionStates?: ExtensionState[];
   settings?: Settings;
 }
 

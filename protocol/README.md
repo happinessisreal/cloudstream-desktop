@@ -53,7 +53,8 @@ Failure:
 | `loadPlugin` | `pluginId`, absolute `path` | Registered providers |
 | `unloadPlugin` | `pluginId` | Boolean (cancels active jobs for the plugin before unloading) |
 | `listProviders` | None | Enriched providers with capabilities and timeouts |
-| `getPluginStates` | None | Per-extension loaded state, actual execution mode and failure message |
+| `getPluginStates` | None | Per-extension loaded state, execution mode (`jvm` vs `dex`), capability report, unavailable APIs, and failure diagnostics |
+| `inspectPackage` | `path` | Pre-flight package inspection without loading: format, sha256, apiVersion, entryClass, requiresResources, unavailableApis, actionableFailure, pluginType |
 | `getMainPage` | `providerId`, `page`, optional `section` | `{ rows: [{ rowId, name, horizontalImages, orientation, items, hasNext }], nextSection, hasMoreSections }` |
 | `search` | `providerId`, `query`, `page` | `{ items: [MediaItem with score, quality, year, dubStatus, otherName, etc.], hasNext }` |
 | `load` | `providerId`, provider-owned `url` | Enriched details (syncData, trailers, actors, recommendations, dubGroups, seasons, uniqueUrl, backgroundPosterUrl, logoUrl, contentRating) |
