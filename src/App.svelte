@@ -45,6 +45,9 @@
     ToggleLeft,
     ToggleRight,
     Copy,
+    Activity,
+    FlaskConical,
+    CheckCheck,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -67,6 +70,9 @@
     Settings as AppSettingsType,
     Repository,
     ProviderCloneConfig,
+    ExtensionUpdate,
+    BulkUpdateResult,
+    ProviderTestReport,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -102,7 +108,9 @@
   let loadingContent = $state(false);
   let error = $state('');
   let notice = $state('');
-  let modal = $state<'repository' | 'direct' | 'rename' | 'localInstall' | 'clone' | null>(null);
+  let modal = $state<
+    'repository' | 'direct' | 'rename' | 'localInstall' | 'clone' | 'test' | null
+  >(null);
   let repoUrl = $state('');
   let directUrl = $state('');
   let repoFilter = $state('');
@@ -115,6 +123,11 @@
   let cloneParentProviderId = $state('');
   let cloneName = $state('');
   let cloneUrl = $state('');
+  let updates = $state<ExtensionUpdate[]>([]);
+  let testReport = $state<ProviderTestReport | null>(null);
+  let testingProvider = $state<Provider | null>(null);
+  let testAbortController: AbortController | null = null;
+  const availableUpdatesCount = $derived(updates.filter((u) => u.hasUpdate).length);
   let extensionTab = $state<'browse' | 'installed'>('browse');
   let details = $state<Details | null>(null);
   let selectedEpisode = $state<Episode | null>(null);
@@ -455,6 +468,61 @@
       modal = null;
       message('Provider clone configured.');
     });
+  }
+  async function checkForUpdates() {
+    await task('checkUpdates', async () => {
+      updates = await call<ExtensionUpdate[]>('check_for_updates');
+      const count = updates.filter((u) => u.hasUpdate).length;
+      if (count > 0) {
+        message(`${count} extension update(s) available.`);
+      } else {
+        message('All extensions are up to date.');
+      }
+    });
+  }
+  async function updateAll() {
+    await task('updateAll', async () => {
+      const results = await call<BulkUpdateResult[]>('update_all_extensions');
+      await refresh();
+      updates = await call<ExtensionUpdate[]>('check_for_updates');
+      const successful = results.filter((r) => r.success).length;
+      const failed = results.filter((r) => !r.success);
+      if (failed.length > 0) {
+        message(
+          `Updated ${successful} extension(s). ${failed.length} failed: ${failed.map((f) => f.name).join(', ')}`,
+        );
+      } else {
+        message(`Successfully updated ${successful} extension(s).`);
+      }
+    });
+  }
+  async function runProviderTest(provider: Provider) {
+    testingProvider = provider;
+    testReport = null;
+    modal = 'test';
+    testAbortController?.abort();
+    testAbortController = new AbortController();
+    const currentSignal = testAbortController.signal;
+
+    await task('testing', async () => {
+      try {
+        testReport = await call<ProviderTestReport>(
+          'test_provider',
+          { providerId: provider.id },
+          { signal: currentSignal },
+        );
+      } catch (e) {
+        if (!currentSignal.aborted) {
+          error = toErrorMessage(e);
+        }
+      }
+    });
+  }
+  function cancelProviderTest() {
+    testAbortController?.abort();
+    testAbortController = null;
+    modal = null;
+    message('Provider test cancelled.');
   }
   async function runSearch(event?: SubmitEvent, nextPage = 1) {
     event?.preventDefault();
@@ -1366,7 +1434,23 @@
                 </article>{/each}
             </div>
             {#if !entries.length}<p class="muted">No extensions match this filter.</p>{/if}{/if}
-        {:else}{#if installedCount}<div class="installed-list">
+        {:else}{#if installedCount}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <span class="muted">{installedCount} installed {installedCount === 1 ? 'extension' : 'extensions'}</span>
+              <div style="display: flex; gap: 8px;">
+                {#if availableUpdatesCount > 0}
+                  <button class="button primary small" onclick={updateAll} disabled={!!busy}>
+                    {#if busy === 'updateAll'}<LoaderCircle class="spin" size={14} />{:else}<RefreshCw size={14} />{/if}
+                    Update all ({availableUpdatesCount})
+                  </button>
+                {/if}
+                <button class="button secondary small" onclick={checkForUpdates} disabled={!!busy}>
+                  {#if busy === 'checkUpdates'}<LoaderCircle class="spin" size={14} />{:else}<RefreshCw size={14} />{/if}
+                  Check for updates
+                </button>
+              </div>
+            </div>
+            <div class="installed-list">
               {#each snapshot.installed as plugin}{@const pluginProviders = (snapshot.providers ?? []).filter((p) => p.pluginId === plugin.id)}
                 <article class="installed-row" style="flex-direction: column; align-items: stretch;">
                   <div style="display: flex; align-items: flex-start; gap: 16px;">
@@ -1415,6 +1499,11 @@
                             </div>
                           </div>
                           <div style="display: flex; gap: 8px; align-items: center;">
+                            <button
+                              class="button small secondary"
+                              aria-label={`Test ${provider.name}`}
+                              onclick={() => runProviderTest(provider)}><FlaskConical size={13} />Test</button
+                            >
                             <button
                               class="button small secondary"
                               aria-label={`Clone ${provider.name}`}
@@ -1588,7 +1677,9 @@
           ? 'Import local extension'
           : modal === 'clone'
             ? 'Configure clone site'
-            : 'Something ready to play?'}
+            : modal === 'test'
+              ? 'Source Self-Tester'
+              : 'Something ready to play?'}
   </h2>
   <p>
     {modal === 'repository'
@@ -1599,7 +1690,9 @@
           ? 'Enter the path to a local .jar or .cs3 extension on your computer.'
           : modal === 'clone'
             ? 'Configure an independent mirror or domain clone for this source without mutating the original.'
-            : 'Open a direct HTTP or HTTPS media URL in your native player.'}
+            : modal === 'test'
+              ? 'Verifies provider capabilities across Home, Search, Details, and Stream link resolution.'
+              : 'Open a direct HTTP or HTTPS media URL in your native player.'}
   </p>
   {#if error}<div class="dialog-error" role="alert">{error}</div>{/if}
   {#if modal === 'repository'}<form onsubmit={addRepository}>
@@ -1666,6 +1759,51 @@
         >
       </div>
     </form>
+  {:else if modal === 'test'}
+    <div style="display: flex; flex-direction: column; gap: 14px; margin: 16px 0;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <FlaskConical size={20} />
+        <div>
+          <strong>Testing: {testingProvider?.name}</strong>
+          <span style="display: block; font-size: 12px; color: var(--subtle);">{testingProvider?.mainUrl}</span>
+        </div>
+      </div>
+      {#if busy === 'testing' && !testReport}
+        <div style="display: flex; align-items: center; gap: 10px; padding: 20px 0; justify-content: center;">
+          <LoaderCircle class="spin" size={24} />
+          <span>Executing test stages (Home, Search, Details, Links)…</span>
+        </div>
+      {/if}
+      {#if testReport}
+        <div style="display: grid; gap: 10px;">
+          {#each testReport.stages as stage}
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #1a1a22; padding: 10px 14px; border-radius: 8px; border: 1px solid #2e2e3a;">
+              <div>
+                <strong style="text-transform: capitalize;">{stage.stage} Stage</strong>
+                {#if stage.message}<span style="display: block; font-size: 11px; color: var(--subtle); margin-top: 2px;">{stage.message}</span>{/if}
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 11px; color: var(--subtle);">{stage.durationMs}ms</span>
+                <span class="pill" class:success={stage.status === 'passed'} class:danger={stage.status === 'failed'} class:warning={stage.status === 'skipped'}>
+                  {stage.status.toUpperCase()}
+                </span>
+              </div>
+            </div>
+          {/each}
+          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #2e2e3a; font-size: 13px;">
+            <span>Total Duration: {testReport.totalDurationMs}ms</span>
+            <span class="pill" class:success={testReport.passed} class:danger={!testReport.passed}>
+              {testReport.passed ? 'ALL PASSED' : 'TESTS FAILED'}
+            </span>
+          </div>
+        </div>
+      {/if}
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={cancelProviderTest}>
+          {busy === 'testing' ? 'Cancel test' : 'Close'}
+        </button>
+      </div>
+    </div>
   {:else}<form onsubmit={directPlay}>
       <label for="stream-url">Media URL</label><input
         id="stream-url"

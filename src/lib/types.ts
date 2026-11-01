@@ -39,6 +39,43 @@ export interface ProviderCloneConfig {
   [key: string]: unknown;
 }
 
+export interface ExtensionUpdate {
+  pluginId: string;
+  name: string;
+  repositoryUrl: string;
+  installedVersion: number;
+  availableVersion: number;
+  changelog?: string;
+  hasUpdate: boolean;
+  entry: PluginEntry;
+}
+
+export interface BulkUpdateResult {
+  pluginId: string;
+  name: string;
+  success: boolean;
+  error?: string;
+  previousVersion: number;
+  updatedVersion?: number;
+}
+
+export interface ProviderTestStageResult {
+  stage: string;
+  status: 'passed' | 'failed' | 'skipped';
+  durationMs: number;
+  message?: string;
+  itemsCount?: number;
+}
+
+export interface ProviderTestReport {
+  providerId: string;
+  providerName: string;
+  passed: boolean;
+  totalDurationMs: number;
+  stages: ProviderTestStageResult[];
+  error?: string;
+}
+
 export interface InstalledPlugin {
   id: string;
   repositoryUrl: string;

@@ -96,5 +96,22 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
   - Kotlin worker tests: `cd runtimes/jvm && ./gradlew test` (passed).
 
+### [T07] Extension updates, bulk actions and source tester
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Added typed models (`ExtensionUpdate`, `BulkUpdateResult`, `ProviderTestStageResult`, `ProviderTestReport`) in Rust (`crates/core/src/models.rs`) and TypeScript (`src/lib/types.ts`). Implemented `check_for_updates` in core, matching installed plugins with stored repositories and checking version numbers and changelogs.
+  2. Implemented `update_extension` and `update_all_extensions` in core. Sequential bulk updates ensure that individual package download or activation failures do not abort remaining updates, and previous working extension versions are strictly preserved upon failure. Added `clean_interrupted_updates` to safely purge leftover temporary files (`.tmp`) upon application startup.
+  3. Implemented `test_provider` self-test suite modeled after Android's `TestViewModel2`: sequentially tests Home, Search, Details, and Links on bounded candidates without unbounded streaming or whole-library traversal. Respects provider capabilities (skips Home if `hasMainPage == false`, skips Links if no candidate episodes), records per-stage duration and status, and supports cancellation.
+  4. Exposed `check_for_updates`, `update_extension`, `update_all_extensions`, and `test_provider` via Tauri RPC commands in `src-tauri/src/main.rs`.
+  5. Built UI components in `src/App.svelte` and `src/style.css`: added "Check for updates" and "Update all" buttons in Extensions Installed tab with version badges, and added a "Test" button on registered provider rows opening a modal dialog displaying stage-by-stage results, pass/skip/fail badges, millisecond timings, and diagnostic details.
+- **Validation:**
+  - Rust tests: `cargo test --test updates_and_tester` (3 passed: cleanup, update rollback on failure, and provider self-tester diagnostics).
+  - All core tests: `cargo test -p cloudstream-core` (43 passed, 1 ignored).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (16 passed, including tests for update check/bulk updates and provider self-tester modal).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
 ## Next Ready Tasks
-- **[T07]** Extension updates, bulk actions and source tester (Depends on: T04, T05, T06)
+- **[T08]** Complete search parity, filters and suggestions (Depends on: T03, T04, T06)

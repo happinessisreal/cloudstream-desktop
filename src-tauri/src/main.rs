@@ -98,6 +98,28 @@ async fn install_sample(app: State<'_, Backend>) -> Reply<InstalledPlugin> {
     app.install_sample().await.map_err(error)
 }
 #[tauri::command]
+async fn check_for_updates(app: State<'_, Backend>) -> Reply<Vec<ExtensionUpdate>> {
+    app.check_for_updates().await.map_err(error)
+}
+#[tauri::command]
+async fn update_extension(app: State<'_, Backend>, id: String) -> Reply<InstalledPlugin> {
+    app.update_extension(&id).await.map_err(error)
+}
+#[tauri::command]
+async fn update_all_extensions(app: State<'_, Backend>) -> Reply<Vec<BulkUpdateResult>> {
+    app.update_all_extensions().await.map_err(error)
+}
+#[tauri::command]
+async fn test_provider(
+    app: State<'_, Backend>,
+    provider_id: String,
+    request_id: Option<String>,
+) -> Reply<ProviderTestReport> {
+    app.test_provider(&provider_id, request_id.as_deref())
+        .await
+        .map_err(error)
+}
+#[tauri::command]
 async fn remove_extension(app: State<'_, Backend>, id: String) -> Reply<()> {
     app.remove_plugin(&id).await.map_err(error)
 }
@@ -251,6 +273,10 @@ fn main() {
             install_local_extension,
             install_sample,
             remove_extension,
+            check_for_updates,
+            update_extension,
+            update_all_extensions,
+            test_provider,
             list_providers,
             set_provider_enabled,
             configure_provider_clone,

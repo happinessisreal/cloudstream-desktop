@@ -26,6 +26,8 @@ pub struct App {
 impl App {
     pub fn open(data: PathBuf, resources: PathBuf) -> Result<Arc<Self>> {
         std::fs::create_dir_all(&data)?;
+        let ext_dir = data.join("extensions");
+        clean_interrupted_updates(&ext_dir);
         let bundled_java = resources.join("jre/bin/java");
         let java = if bundled_java.is_file() {
             bundled_java
@@ -34,7 +36,7 @@ impl App {
         };
         Ok(Arc::new(Self {
             store: Store::open(&data.join("cloudstream.db"))?,
-            repositories: RepositoryManager::new(data.join("extensions"))?,
+            repositories: RepositoryManager::new(ext_dir)?,
             worker: Worker::new(WorkerConfig {
                 java,
                 jar: resources.join("worker/worker.jar"),
@@ -226,6 +228,355 @@ impl App {
         }
         self.call("getPluginStates", json!({})).await
     }
+    pub async fn check_for_updates(&self) -> Result<Vec<ExtensionUpdate>> {
+        let installed = self.store.installed()?;
+        let repositories = self.store.repositories()?;
+        let mut updates = Vec::new();
+
+        for plugin in installed {
+            if let Some(repo) = repositories.iter().find(|r| r.url == plugin.repository_url) {
+                if let Some(entry) = repo
+                    .plugins
+                    .iter()
+                    .find(|e| e.internal_name == plugin.entry.internal_name)
+                {
+                    let has_update = entry.version > plugin.entry.version;
+                    let changelog = entry
+                        .extra
+                        .get("changelog")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_owned);
+                    updates.push(ExtensionUpdate {
+                        plugin_id: plugin.id.clone(),
+                        name: plugin.entry.name.clone(),
+                        repository_url: plugin.repository_url.clone(),
+                        installed_version: plugin.entry.version,
+                        available_version: entry.version,
+                        changelog,
+                        has_update,
+                        entry: entry.clone(),
+                    });
+                }
+            }
+        }
+        Ok(updates)
+    }
+
+    pub async fn update_extension(&self, plugin_id: &str) -> Result<InstalledPlugin> {
+        let installed = self.store.installed()?;
+        let target = installed
+            .into_iter()
+            .find(|p| p.id == plugin_id)
+            .context("Extension is not currently installed")?;
+
+        self.install(&target.repository_url, &target.entry.internal_name)
+            .await
+    }
+
+    pub async fn update_all_extensions(&self) -> Result<Vec<BulkUpdateResult>> {
+        let candidates = self.check_for_updates().await?;
+        let mut results = Vec::new();
+
+        for candidate in candidates.into_iter().filter(|c| c.has_update) {
+            let prev_ver = candidate.installed_version;
+            match self.update_extension(&candidate.plugin_id).await {
+                Ok(updated) => {
+                    results.push(BulkUpdateResult {
+                        plugin_id: candidate.plugin_id,
+                        name: candidate.name,
+                        success: true,
+                        error: None,
+                        previous_version: prev_ver,
+                        updated_version: Some(updated.entry.version),
+                    });
+                }
+                Err(e) => {
+                    results.push(BulkUpdateResult {
+                        plugin_id: candidate.plugin_id,
+                        name: candidate.name,
+                        success: false,
+                        error: Some(e.to_string()),
+                        previous_version: prev_ver,
+                        updated_version: None,
+                    });
+                }
+            }
+        }
+        Ok(results)
+    }
+
+    pub async fn test_provider(
+        &self,
+        provider_id: &str,
+        request_id: Option<&str>,
+    ) -> Result<ProviderTestReport> {
+        let providers = self.providers().await?;
+        let provider = providers
+            .into_iter()
+            .find(|p| p.id == provider_id)
+            .context("Provider not found or disabled")?;
+
+        let start_total = std::time::Instant::now();
+        let mut stages = Vec::new();
+        let mut candidate_url: Option<String> = None;
+        let mut candidate_data: Option<String> = None;
+        let caps = provider.capabilities.clone().unwrap_or_default();
+
+        // Stage 1: Home
+        if caps.has_main_page {
+            let stage_start = std::time::Instant::now();
+            let home_res = self
+                .call_cancellable(
+                    request_id,
+                    "getMainPage",
+                    json!({ "providerId": provider.id, "page": 1, "section": 0 }),
+                )
+                .await;
+            let elapsed = stage_start.elapsed().as_millis() as u64;
+
+            match home_res {
+                Ok(val) => {
+                    let home: Result<HomeResponse, _> = serde_json::from_value(val);
+                    match home {
+                        Ok(resp) => {
+                            let total_items: usize = resp.rows.iter().map(|r| r.items.len()).sum();
+                            if let Some(first_item) = resp.rows.iter().flat_map(|r| &r.items).next() {
+                                candidate_url = Some(first_item.url.clone());
+                            }
+                            stages.push(ProviderTestStageResult {
+                                stage: "home".into(),
+                                status: "passed".into(),
+                                duration_ms: elapsed,
+                                message: Some(format!(
+                                    "Loaded {} rows with {} items",
+                                    resp.rows.len(),
+                                    total_items
+                                )),
+                                items_count: Some(total_items),
+                            });
+                        }
+                        Err(e) => {
+                            stages.push(ProviderTestStageResult {
+                                stage: "home".into(),
+                                status: "failed".into(),
+                                duration_ms: elapsed,
+                                message: Some(format!("Invalid home response schema: {e}")),
+                                items_count: None,
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    stages.push(ProviderTestStageResult {
+                        stage: "home".into(),
+                        status: "failed".into(),
+                        duration_ms: elapsed,
+                        message: Some(e.to_string()),
+                        items_count: None,
+                    });
+                }
+            }
+        } else {
+            stages.push(ProviderTestStageResult {
+                stage: "home".into(),
+                status: "skipped".into(),
+                duration_ms: 0,
+                message: Some("Provider lacks main page capability".into()),
+                items_count: None,
+            });
+        }
+
+        // Stage 2: Search
+        let test_query = "bunny";
+        let stage_start = std::time::Instant::now();
+        let search_res = self
+            .call_cancellable(
+                request_id,
+                "search",
+                json!({ "providerId": provider.id, "query": test_query, "page": 1 }),
+            )
+            .await;
+        let elapsed = stage_start.elapsed().as_millis() as u64;
+
+        match search_res {
+            Ok(val) => {
+                let items: Result<Vec<MediaItem>, _> = serde_json::from_value(
+                    val.get("items")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Array(vec![])),
+                );
+                match items {
+                    Ok(item_list) => {
+                        if candidate_url.is_none() {
+                            if let Some(first) = item_list.first() {
+                                candidate_url = Some(first.url.clone());
+                            }
+                        }
+                        stages.push(ProviderTestStageResult {
+                            stage: "search".into(),
+                            status: "passed".into(),
+                            duration_ms: elapsed,
+                            message: Some(format!("Returned {} search items", item_list.len())),
+                            items_count: Some(item_list.len()),
+                        });
+                    }
+                    Err(e) => {
+                        stages.push(ProviderTestStageResult {
+                            stage: "search".into(),
+                            status: "failed".into(),
+                            duration_ms: elapsed,
+                            message: Some(format!("Invalid search response schema: {e}")),
+                            items_count: None,
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                stages.push(ProviderTestStageResult {
+                    stage: "search".into(),
+                    status: "failed".into(),
+                    duration_ms: elapsed,
+                    message: Some(e.to_string()),
+                    items_count: None,
+                });
+            }
+        }
+
+        // Stage 3: Details (load)
+        if let Some(url) = candidate_url {
+            let stage_start = std::time::Instant::now();
+            let load_res = self
+                .call_cancellable(
+                    request_id,
+                    "load",
+                    json!({ "providerId": provider.id, "url": url }),
+                )
+                .await;
+            let elapsed = stage_start.elapsed().as_millis() as u64;
+
+            match load_res {
+                Ok(val) => {
+                    let details: Result<MediaDetails, _> = serde_json::from_value(val);
+                    match details {
+                        Ok(det) => {
+                            let ep_count = det.episodes.len();
+                            if let Some(first_ep) = det.episodes.first() {
+                                candidate_data = Some(first_ep.data.clone());
+                            }
+                            stages.push(ProviderTestStageResult {
+                                stage: "details".into(),
+                                status: "passed".into(),
+                                duration_ms: elapsed,
+                                message: Some(format!("Loaded details with {} episodes", ep_count)),
+                                items_count: Some(ep_count),
+                            });
+                        }
+                        Err(e) => {
+                            stages.push(ProviderTestStageResult {
+                                stage: "details".into(),
+                                status: "failed".into(),
+                                duration_ms: elapsed,
+                                message: Some(format!("Invalid details schema: {e}")),
+                                items_count: None,
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    stages.push(ProviderTestStageResult {
+                        stage: "details".into(),
+                        status: "failed".into(),
+                        duration_ms: elapsed,
+                        message: Some(e.to_string()),
+                        items_count: None,
+                    });
+                }
+            }
+        } else {
+            stages.push(ProviderTestStageResult {
+                stage: "details".into(),
+                status: "skipped".into(),
+                duration_ms: 0,
+                message: Some("No candidate media item available to load".into()),
+                items_count: None,
+            });
+        }
+
+        // Stage 4: Links (loadLinks)
+        if let Some(data) = candidate_data {
+            let stage_start = std::time::Instant::now();
+            let links_res = self
+                .call_cancellable(
+                    request_id,
+                    "loadLinks",
+                    json!({ "providerId": provider.id, "data": data }),
+                )
+                .await;
+            let elapsed = stage_start.elapsed().as_millis() as u64;
+
+            match links_res {
+                Ok(val) => {
+                    let links: Result<ResolvedLinks, _> = serde_json::from_value(val);
+                    match links {
+                        Ok(l) => {
+                            stages.push(ProviderTestStageResult {
+                                stage: "links".into(),
+                                status: "passed".into(),
+                                duration_ms: elapsed,
+                                message: Some(format!(
+                                    "Resolved {} streams, {} subtitles",
+                                    l.streams.len(),
+                                    l.subtitles.len()
+                                )),
+                                items_count: Some(l.streams.len()),
+                            });
+                        }
+                        Err(e) => {
+                            stages.push(ProviderTestStageResult {
+                                stage: "links".into(),
+                                status: "failed".into(),
+                                duration_ms: elapsed,
+                                message: Some(format!("Invalid links schema: {e}")),
+                                items_count: None,
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    stages.push(ProviderTestStageResult {
+                        stage: "links".into(),
+                        status: "failed".into(),
+                        duration_ms: elapsed,
+                        message: Some(e.to_string()),
+                        items_count: None,
+                    });
+                }
+            }
+        } else {
+            stages.push(ProviderTestStageResult {
+                stage: "links".into(),
+                status: "skipped".into(),
+                duration_ms: 0,
+                message: Some("No candidate episode data available to test links".into()),
+                items_count: None,
+            });
+        }
+
+        let all_passed = stages
+            .iter()
+            .all(|s| s.status == "passed" || s.status == "skipped");
+        let total_elapsed = start_total.elapsed().as_millis() as u64;
+
+        Ok(ProviderTestReport {
+            provider_id: provider.id,
+            provider_name: provider.name,
+            passed: all_passed,
+            total_duration_ms: total_elapsed,
+            stages,
+            error: None,
+        })
+    }
+
     pub async fn install(
         &self,
         repository_url: &str,
@@ -418,5 +769,22 @@ impl App {
             self.store.save_watch_entry(&watch, "default")?;
         }
         Ok(())
+    }
+}
+
+pub fn clean_interrupted_updates(dir: &std::path::Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                clean_interrupted_updates(&path);
+            } else if path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|name| name.ends_with(".tmp") || name.contains(".tmp."))
+            {
+                let _ = std::fs::remove_file(path);
+            }
+        }
     }
 }

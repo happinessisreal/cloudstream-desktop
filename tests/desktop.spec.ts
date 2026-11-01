@@ -189,6 +189,52 @@ async function desktopFixture(page: Page, unsupported = false) {
           return null;
         case 'delete_provider_clone':
           return null;
+        case 'check_for_updates':
+          return [
+            {
+              pluginId: 'sample',
+              name: 'Blender Open Movies',
+              repositoryUrl: 'bundled://samples',
+              installedVersion: 1,
+              availableVersion: 2,
+              hasUpdate: true,
+              entry: { ...plugin.entry, version: 2 },
+            },
+          ];
+        case 'update_extension': {
+          if (state.installed[0]) {
+            state.installed[0].entry.version = 2;
+          }
+          return state.installed[0] ?? null;
+        }
+        case 'update_all_extensions': {
+          if (state.installed[0]) {
+            state.installed[0].entry.version = 2;
+          }
+          return [
+            {
+              pluginId: 'sample',
+              name: 'Blender Open Movies',
+              success: true,
+              previousVersion: 1,
+              updatedVersion: 2,
+            },
+          ];
+        }
+        case 'test_provider': {
+          return {
+            providerId: args.providerId,
+            providerName: 'Blender Open Movies',
+            passed: true,
+            totalDurationMs: 42,
+            stages: [
+              { stage: 'home', status: 'passed', durationMs: 12, message: 'Loaded 1 row' },
+              { stage: 'search', status: 'passed', durationMs: 10, message: 'Returned 1 item' },
+              { stage: 'details', status: 'passed', durationMs: 11, message: 'Loaded details' },
+              { stage: 'links', status: 'passed', durationMs: 9, message: 'Resolved 1 stream' },
+            ],
+          };
+        }
         case 'get_settings':
           return structuredClone(state.settings);
         case 'update_settings': {
@@ -487,4 +533,43 @@ test('provider toggle enables and disables source', async ({ page }) => {
 
   await toggleBtn.click();
   await expect(page.getByText('Provider disabled.')).toBeVisible();
+});
+
+test('check for updates and bulk update extensions', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await page.getByRole('button', { name: /Installed/ }).click();
+
+  // Click Check for updates
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.getByText('1 extension update(s) available.')).toBeVisible();
+
+  // Update all button should now appear
+  const updateAllBtn = page.getByRole('button', { name: /Update all/ });
+  await expect(updateAllBtn).toBeVisible();
+  await updateAllBtn.click();
+  await expect(page.getByText('Successfully updated 1 extension(s).')).toBeVisible();
+});
+
+test('source self-tester runs stages and displays diagnostics', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await page.getByRole('button', { name: /Installed/ }).click();
+
+  // Click Test on provider
+  await page.getByRole('button', { name: 'Test Blender Open Movies' }).click();
+  await expect(page.getByRole('heading', { name: 'Source Self-Tester' })).toBeVisible();
+
+  // Verify stages
+  await expect(page.getByText('Home Stage')).toBeVisible();
+  await expect(page.getByText('Search Stage')).toBeVisible();
+  await expect(page.getByText('Details Stage')).toBeVisible();
+  await expect(page.getByText('Links Stage')).toBeVisible();
+  await expect(page.getByText('ALL PASSED')).toBeVisible();
+
+  // Close tester modal
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Source Self-Tester' })).not.toBeVisible();
 });

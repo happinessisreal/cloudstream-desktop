@@ -148,7 +148,7 @@ pub struct RepositoryManifest {
     pub plugin_lists: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginEntry {
     pub url: String,
@@ -216,6 +216,54 @@ pub struct InstalledPlugin {
     pub verified: bool,
     pub plugin_class: Option<String>,
     pub installed_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionUpdate {
+    pub plugin_id: String,
+    pub name: String,
+    pub repository_url: String,
+    pub installed_version: i64,
+    pub available_version: i64,
+    pub changelog: Option<String>,
+    pub has_update: bool,
+    pub entry: PluginEntry,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkUpdateResult {
+    pub plugin_id: String,
+    pub name: String,
+    pub success: bool,
+    pub error: Option<String>,
+    pub previous_version: i64,
+    pub updated_version: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderTestStageResult {
+    pub stage: String,
+    pub status: String,
+    pub duration_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderTestReport {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub passed: bool,
+    pub total_duration_ms: u64,
+    pub stages: Vec<ProviderTestStageResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
