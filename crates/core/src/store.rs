@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, Transaction};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{path::Path, sync::Mutex};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 pub struct Migration {
     pub version: u32,
@@ -32,6 +32,206 @@ fn migration_2(tx: &Transaction) -> Result<()> {
     Ok(())
 }
 
+fn migration_3(tx: &Transaction) -> Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS aliases (
+            alias_key TEXT NOT NULL PRIMARY KEY,
+            target_kind TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_aliases_target ON aliases(target_kind, target_id);
+
+        CREATE TABLE IF NOT EXISTS episode_payloads (
+            episode_id TEXT NOT NULL PRIMARY KEY,
+            media_id TEXT NOT NULL,
+            data TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS watch_progress (
+            profile_id TEXT NOT NULL,
+            media_id TEXT NOT NULL,
+            episode_id TEXT NOT NULL,
+            position_seconds REAL NOT NULL,
+            duration_seconds REAL,
+            updated_at_ms INTEGER NOT NULL,
+            is_watched INTEGER NOT NULL DEFAULT 0,
+            completion_reason TEXT,
+            extra TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY(profile_id, episode_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_watch_progress_media ON watch_progress(profile_id, media_id, updated_at_ms DESC);",
+    )?;
+
+    // 1. Migrate library bookmarks
+    {
+        let mut stmt = tx.prepare("SELECT id, value, updated FROM records WHERE kind = 'library'")?;
+        let rows: Vec<(String, String, u64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (legacy_id, value_str, updated) in rows {
+            if let Ok(mut item_record) = serde_json::from_str::<serde_json::Value>(&value_str) {
+                if let Some(item_obj) = item_record.get_mut("item") {
+                    let provider_id = item_obj
+                        .get("providerId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let url = item_obj
+                        .get("url")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let unique_url = item_obj
+                        .get("uniqueUrl")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    let media_id = compute_media_id(&provider_id, &url, unique_url.as_deref());
+                    item_obj
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("mediaId".into(), serde_json::json!(media_id));
+
+                    let now_ms = to_epoch_millis(updated);
+                    tx.execute(
+                        "INSERT OR IGNORE INTO aliases (alias_key, target_kind, target_id, created_at) VALUES (?1, 'media', ?2, ?3)",
+                        params![legacy_id, media_id, now_ms],
+                    )?;
+
+                    if let Some(saved_at) = item_record.get("savedAt").and_then(|v| v.as_u64()) {
+                        item_record
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("savedAt".into(), serde_json::json!(to_epoch_millis(saved_at)));
+                    }
+                    item_record
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("id".into(), serde_json::json!(media_id));
+
+                    let new_value = serde_json::to_string(&item_record)?;
+                    tx.execute(
+                        "DELETE FROM records WHERE kind = 'library' AND id = ?1",
+                        params![legacy_id],
+                    )?;
+                    tx.execute(
+                        "INSERT INTO records (kind, id, value, updated) VALUES ('library', ?1, ?2, ?3) ON CONFLICT(kind, id) DO UPDATE SET value = excluded.value, updated = excluded.updated",
+                        params![media_id, new_value, now_ms],
+                    )?;
+                }
+            }
+        }
+    }
+
+    // 2. Migrate history records
+    {
+        let mut stmt = tx.prepare("SELECT id, value, updated FROM records WHERE kind = 'history'")?;
+        let rows: Vec<(String, String, u64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (legacy_id, value_str, updated) in rows {
+            if let Ok(mut hist_record) = serde_json::from_str::<serde_json::Value>(&value_str) {
+                let provider_id = hist_record
+                    .get("item")
+                    .and_then(|i| i.get("providerId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let url = hist_record
+                    .get("item")
+                    .and_then(|i| i.get("url"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let unique_url = hist_record
+                    .get("item")
+                    .and_then(|i| i.get("uniqueUrl"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                let media_id = compute_media_id(&provider_id, &url, unique_url.as_deref());
+
+                let episode_val = hist_record.get("episode").cloned().unwrap_or(serde_json::json!({}));
+                let ep_name = episode_val.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let ep_data = episode_val.get("data").and_then(|v| v.as_str()).unwrap_or("");
+                let ep_season = episode_val.get("season").and_then(|v| v.as_i64()).map(|s| s as i32);
+                let ep_number = episode_val.get("episode").and_then(|v| v.as_i64()).map(|e| e as i32);
+                let ep_id_explicit = episode_val.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                let dummy_episode = Episode {
+                    name: ep_name.to_string(),
+                    data: ep_data.to_string(),
+                    season: ep_season,
+                    episode: ep_number,
+                    poster_url: None,
+                    id: ep_id_explicit,
+                    dub_status: None,
+                    index: None,
+                    extra: std::collections::BTreeMap::new(),
+                };
+
+                let episode_id = compute_episode_id(&media_id, &dummy_episode, None, None);
+                let legacy_data_alias = crate::repository::plugin_id(&provider_id, ep_data);
+                let now_ms = to_epoch_millis(updated);
+
+                tx.execute(
+                    "INSERT OR IGNORE INTO aliases (alias_key, target_kind, target_id, created_at) VALUES (?1, 'episode', ?2, ?3)",
+                    params![legacy_data_alias, episode_id, now_ms],
+                )?;
+                if legacy_id != episode_id {
+                    tx.execute(
+                        "INSERT OR IGNORE INTO aliases (alias_key, target_kind, target_id, created_at) VALUES (?1, 'episode', ?2, ?3)",
+                        params![legacy_id, episode_id, now_ms],
+                    )?;
+                }
+
+                if !ep_data.is_empty() {
+                    tx.execute(
+                        "INSERT OR REPLACE INTO episode_payloads (episode_id, media_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                        params![episode_id, media_id, ep_data, now_ms],
+                    )?;
+                }
+
+                let position = hist_record.get("position").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let duration = hist_record.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let is_watched = if duration > 0.0 && position >= 0.9 * duration { 1 } else { 0 };
+
+                tx.execute(
+                    "INSERT OR REPLACE INTO watch_progress (profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched) VALUES ('default', ?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![media_id, episode_id, position, duration, now_ms, is_watched],
+                )?;
+
+                if let Some(item_obj) = hist_record.get_mut("item") {
+                    item_obj.as_object_mut().unwrap().insert("mediaId".into(), serde_json::json!(media_id));
+                }
+                if let Some(ep_obj) = hist_record.get_mut("episode") {
+                    ep_obj.as_object_mut().unwrap().insert("id".into(), serde_json::json!(episode_id));
+                }
+                hist_record.as_object_mut().unwrap().insert("id".into(), serde_json::json!(episode_id));
+                hist_record.as_object_mut().unwrap().insert("watchedAt".into(), serde_json::json!(now_ms));
+
+                let new_value = serde_json::to_string(&hist_record)?;
+                tx.execute(
+                    "DELETE FROM records WHERE kind = 'history' AND id = ?1",
+                    params![legacy_id],
+                )?;
+                tx.execute(
+                    "INSERT INTO records (kind, id, value, updated) VALUES ('history', ?1, ?2, ?3) ON CONFLICT(kind, id) DO UPDATE SET value = excluded.value, updated = excluded.updated",
+                    params![episode_id, new_value, now_ms],
+                )?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn standard_migrations() -> Vec<Migration> {
     vec![
         Migration {
@@ -43,6 +243,11 @@ pub fn standard_migrations() -> Vec<Migration> {
             version: 2,
             description: "Records index and settings schema",
             run: migration_2,
+        },
+        Migration {
+            version: 3,
+            description: "Stable identity, aliases, payloads and watch progress",
+            run: migration_3,
         },
     ]
 }
@@ -164,6 +369,138 @@ impl Store {
             .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
         let version: u32 = connection.query_row("PRAGMA user_version;", [], |r| r.get(0))?;
         Ok(version)
+    }
+
+    pub fn put_alias(&self, alias_key: &str, target_kind: &str, target_id: &str) -> Result<()> {
+        self.connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?
+            .execute(
+                "INSERT OR REPLACE INTO aliases (alias_key, target_kind, target_id, created_at) VALUES (?1, ?2, ?3, ?4)",
+                params![alias_key, target_kind, target_id, timestamp_ms()],
+            )?;
+        Ok(())
+    }
+
+    pub fn resolve_alias(&self, alias_key: &str, target_kind: &str) -> Result<Option<String>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT target_id FROM aliases WHERE alias_key = ?1 AND target_kind = ?2",
+        )?;
+        let mut rows = stmt.query([alias_key, target_kind])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn save_episode_payload(&self, episode_id: &str, media_id: &str, data: &str) -> Result<()> {
+        self.connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?
+            .execute(
+                "INSERT OR REPLACE INTO episode_payloads (episode_id, media_id, data, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                params![episode_id, media_id, data, timestamp_ms()],
+            )?;
+        Ok(())
+    }
+
+    pub fn get_episode_payload(&self, episode_id: &str) -> Result<Option<String>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare("SELECT data FROM episode_payloads WHERE episode_id = ?1")?;
+        let mut rows = stmt.query([episode_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn save_watch_progress(&self, progress: &WatchProgress) -> Result<()> {
+        let extra_str = serde_json::to_string(&progress.extra)?;
+        self.connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?
+            .execute(
+                "INSERT OR REPLACE INTO watch_progress (profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched, completion_reason, extra) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    progress.profile_id,
+                    progress.media_id,
+                    progress.episode_id,
+                    progress.position_seconds,
+                    progress.duration_seconds,
+                    progress.updated_at_ms,
+                    if progress.is_watched { 1 } else { 0 },
+                    progress.completion_reason,
+                    extra_str
+                ],
+            )?;
+        Ok(())
+    }
+
+    pub fn get_watch_progress(&self, profile_id: &str, episode_id: &str) -> Result<Option<WatchProgress>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched, completion_reason, extra FROM watch_progress WHERE profile_id = ?1 AND episode_id = ?2"
+        )?;
+        let mut rows = stmt.query([profile_id, episode_id])?;
+        if let Some(row) = rows.next()? {
+            let extra_str: String = row.get(8).unwrap_or_else(|_| "{}".into());
+            let extra: std::collections::BTreeMap<String, serde_json::Value> = serde_json::from_str(&extra_str).unwrap_or_default();
+            Ok(Some(WatchProgress {
+                profile_id: row.get(0)?,
+                media_id: row.get(1)?,
+                episode_id: row.get(2)?,
+                position_seconds: row.get(3)?,
+                duration_seconds: row.get(4)?,
+                updated_at_ms: row.get(5)?,
+                is_watched: row.get::<_, i64>(6)? != 0,
+                completion_reason: row.get(7)?,
+                extra,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn save_watch_entry(&self, watch: &WatchEntry, profile_id: &str) -> Result<()> {
+        let media_id = watch
+            .item
+            .media_id
+            .clone()
+            .unwrap_or_else(|| compute_media_id(&watch.item.provider_id, &watch.item.url, watch.item.unique_url.as_deref()));
+        let episode_id = watch.id.clone();
+
+        self.put("history", &episode_id, watch)?;
+        self.save_episode_payload(&episode_id, &media_id, &watch.episode.data)?;
+
+        let legacy_data_alias = crate::repository::plugin_id(&watch.item.provider_id, &watch.episode.data);
+        self.put_alias(&legacy_data_alias, "episode", &episode_id)?;
+
+        let is_watched = watch.duration > 0.0 && watch.position >= 0.9 * watch.duration;
+        let progress = WatchProgress {
+            profile_id: profile_id.to_string(),
+            media_id,
+            episode_id,
+            position_seconds: watch.position,
+            duration_seconds: if watch.duration > 0.0 { Some(watch.duration) } else { None },
+            updated_at_ms: watch.watched_at,
+            is_watched,
+            completion_reason: None,
+            extra: std::collections::BTreeMap::new(),
+        };
+        self.save_watch_progress(&progress)?;
+        Ok(())
     }
 }
 

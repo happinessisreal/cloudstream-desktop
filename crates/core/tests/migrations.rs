@@ -45,18 +45,33 @@ fn version_1_database_fixture_survives_upgrade_and_reopen() {
         assert_eq!(plugins[0].entry.name, "V1 Plugin");
         assert_eq!(plugins[0].runtime, RuntimeKind::Jvm);
 
-        // Verify v1 bookmark record
+        // Verify v1 bookmark record (migrated to stable media_id, with alias)
         let library = store.library().unwrap();
         assert_eq!(library.len(), 1);
-        assert_eq!(library[0].id, "v1-lib-id");
+        let expected_media_id = compute_media_id("p1", "https://example.com/item", None);
+        assert_eq!(library[0].id, expected_media_id);
         assert_eq!(library[0].item.name, "V1 Bookmark");
+        assert_eq!(
+            store.resolve_alias("v1-lib-id", "media").unwrap().as_deref(),
+            Some(expected_media_id.as_str())
+        );
 
-        // Verify v1 history record
+        // Verify v1 history record (migrated to stable episode_id, with alias and watch progress)
         let history = store.history().unwrap();
         assert_eq!(history.len(), 1);
-        assert_eq!(history[0].id, "v1-hist-id");
         assert_eq!(history[0].episode.name, "Episode 1");
         assert_eq!(history[0].position, 120.0);
+        let migrated_ep_id = history[0].id.clone();
+        assert_eq!(
+            store.resolve_alias("v1-hist-id", "episode").unwrap().as_deref(),
+            Some(migrated_ep_id.as_str())
+        );
+        let prog = store
+            .get_watch_progress("default", &migrated_ep_id)
+            .unwrap()
+            .expect("Migrated watch progress must exist");
+        assert_eq!(prog.position_seconds, 120.0);
+        assert_eq!(prog.duration_seconds, Some(1400.0));
 
         // Verify default settings created
         let settings = store.get_settings().unwrap();

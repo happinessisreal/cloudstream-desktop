@@ -38,6 +38,37 @@ export interface Provider {
   usesWebView: boolean;
   supportedTypes: string[];
 }
+export type DubStatus = 'none' | 'dubbed' | 'subbed';
+
+export interface MediaRef {
+  mediaId: string;
+  providerId: string;
+  url: string;
+  uniqueUrl?: string;
+  externalIds?: Record<string, string>;
+}
+
+export interface EpisodeRef {
+  episodeId: string;
+  mediaId: string;
+  dubStatus: DubStatus;
+  season?: number;
+  episode?: number;
+  data: string;
+  aliases?: string[];
+}
+
+export interface WatchProgress {
+  profileId: string;
+  mediaId: string;
+  episodeId: string;
+  positionSeconds: number;
+  durationSeconds?: number;
+  updatedAtMs: number;
+  isWatched: boolean;
+  completionReason?: string;
+}
+
 export interface MediaItem {
   providerId: string;
   name: string;
@@ -46,6 +77,8 @@ export interface MediaItem {
   posterHeaders: Record<string, string>;
   mediaType?: string;
   year?: number;
+  uniqueUrl?: string;
+  mediaId?: string;
 }
 export interface Episode {
   name: string;
@@ -53,6 +86,9 @@ export interface Episode {
   season?: number;
   episode?: number;
   posterUrl?: string;
+  id?: string;
+  dubStatus?: DubStatus;
+  index?: number;
 }
 export interface Details {
   item: MediaItem;

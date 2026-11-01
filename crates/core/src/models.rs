@@ -1,5 +1,138 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+
+pub fn digest_string(s: &str) -> String {
+    format!("{:x}", Sha256::digest(s.as_bytes()))
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DubStatus {
+    #[default]
+    None,
+    Dubbed,
+    Subbed,
+}
+
+impl DubStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Dubbed => "dubbed",
+            Self::Subbed => "subbed",
+        }
+    }
+    pub fn parse(s: &str) -> Self {
+        match s.to_ascii_lowercase().as_str() {
+            "dubbed" | "dub" => Self::Dubbed,
+            "subbed" | "sub" => Self::Subbed,
+            _ => Self::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaRef {
+    pub media_id: String,
+    pub provider_id: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unique_url: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub external_ids: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EpisodeRef {
+    pub episode_id: String,
+    pub media_id: String,
+    pub dub_status: DubStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode: Option<i32>,
+    pub data: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchProgress {
+    pub profile_id: String,
+    pub media_id: String,
+    pub episode_id: String,
+    pub position_seconds: f64,
+    pub duration_seconds: Option<f64>,
+    pub updated_at_ms: u64,
+    #[serde(default)]
+    pub is_watched: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_reason: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+pub fn compute_media_id(provider_id: &str, url: &str, unique_url: Option<&str>) -> String {
+    let key = unique_url.unwrap_or(url);
+    format!("{provider_id}::{}", digest_string(key))
+}
+
+pub fn compute_episode_id(
+    media_id: &str,
+    episode: &Episode,
+    dub: Option<DubStatus>,
+    index: Option<usize>,
+) -> String {
+    if let Some(id) = &episode.id {
+        if !id.is_empty() {
+            return format!("{media_id}::ep::{id}");
+        }
+    }
+    let dub_str = dub
+        .or(episode.dub_status)
+        .unwrap_or(DubStatus::None)
+        .as_str();
+
+    if let (Some(s), Some(e)) = (episode.season, episode.episode) {
+        return format!("{media_id}::{dub_str}::s{s}e{e}");
+    }
+    if let Some(e) = episode.episode {
+        return format!("{media_id}::{dub_str}::e{e}");
+    }
+    if let Some(s) = episode.season {
+        let idx = index.unwrap_or(0);
+        return format!("{media_id}::{dub_str}::s{s}_idx{idx}");
+    }
+
+    if episode.season.is_none()
+        && episode.episode.is_none()
+        && (index == Some(0) || index.is_none())
+        && (episode.name.is_empty()
+            || episode.name.contains("Movie")
+            || episode.name.contains("Trailer")
+            || episode.data.starts_with("http")
+            || episode.data.contains("movie"))
+    {
+        return format!("{media_id}::movie");
+    }
+
+    let idx = index.unwrap_or(0);
+    let clean_name: String = episode
+        .name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+        .take(32)
+        .collect();
+    if clean_name.is_empty() {
+        format!("{media_id}::{dub_str}::idx{idx}")
+    } else {
+        format!("{media_id}::{dub_str}::idx{idx}_{clean_name}")
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,7 +218,7 @@ pub struct Provider {
     pub supported_types: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaItem {
     pub provider_id: String,
@@ -96,9 +229,15 @@ pub struct MediaItem {
     pub poster_headers: BTreeMap<String, String>,
     pub media_type: Option<String>,
     pub year: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unique_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_id: Option<String>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Episode {
     pub name: String,
@@ -106,6 +245,14 @@ pub struct Episode {
     pub season: Option<i32>,
     pub episode: Option<i32>,
     pub poster_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dub_status: Option<DubStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<i32>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,4 +433,19 @@ pub fn timestamp() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+pub fn timestamp_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+pub fn to_epoch_millis(timestamp_or_seconds: u64) -> u64 {
+    if timestamp_or_seconds > 0 && timestamp_or_seconds < 10_000_000_000 {
+        timestamp_or_seconds * 1000
+    } else {
+        timestamp_or_seconds
+    }
 }

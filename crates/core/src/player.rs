@@ -151,7 +151,7 @@ impl Player {
             if let Some(duration) = duration {
                 watch.duration = duration;
             }
-            watch.watched_at = timestamp();
+            watch.watched_at = timestamp_ms();
         }
         let result = playback.watch.clone();
         if playback.child.try_wait()?.is_some() {

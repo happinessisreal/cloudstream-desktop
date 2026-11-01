@@ -224,13 +224,19 @@ impl App {
         }
         self.store.remove("repository", url)
     }
-    pub fn bookmark(&self, item: MediaItem) -> Result<LibraryItem> {
+    pub fn bookmark(&self, mut item: MediaItem) -> Result<LibraryItem> {
+        let media_id = compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
+        item.media_id = Some(media_id.clone());
+        let legacy_id = plugin_id(&item.provider_id, &item.url);
+        let now_ms = timestamp_ms();
+
         let entry = LibraryItem {
-            id: plugin_id(&item.provider_id, &item.url),
+            id: media_id.clone(),
             item,
-            saved_at: timestamp(),
+            saved_at: now_ms,
         };
         self.store.put("library", &entry.id, &entry)?;
+        self.store.put_alias(&legacy_id, "media", &media_id)?;
         Ok(entry)
     }
     pub async fn play(
@@ -243,27 +249,53 @@ impl App {
     ) -> Result<()> {
         self.save_progress().await?;
         let watch = match (item, episode) {
-            (Some(item), Some(episode)) => Some(WatchEntry {
-                id: plugin_id(&item.provider_id, &episode.data),
-                item,
-                episode,
-                position: resume,
-                duration: 0.0,
-                watched_at: timestamp(),
-            }),
+            (Some(mut item), Some(mut episode)) => {
+                let media_id =
+                    compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
+                item.media_id = Some(media_id.clone());
+                let episode_id = compute_episode_id(&media_id, &episode, episode.dub_status, None);
+                episode.id = Some(episode_id.clone());
+
+                self.store
+                    .save_episode_payload(&episode_id, &media_id, &episode.data)?;
+                let legacy_data_alias = plugin_id(&item.provider_id, &episode.data);
+                self.store
+                    .put_alias(&legacy_data_alias, "episode", &episode_id)?;
+
+                let effective_resume = if resume > 0.0 {
+                    resume
+                } else if let Ok(Some(existing_progress)) =
+                    self.store.get_watch_progress("default", &episode_id)
+                {
+                    existing_progress.position_seconds
+                } else {
+                    0.0
+                };
+
+                let watch = WatchEntry {
+                    id: episode_id,
+                    item,
+                    episode,
+                    position: effective_resume,
+                    duration: 0.0,
+                    watched_at: timestamp_ms(),
+                };
+                Some(watch)
+            }
             _ => None,
         };
+        let start_pos = watch.as_ref().map(|w| w.position).unwrap_or(resume);
         self.player
-            .play(&stream, &subtitles, watch.clone(), resume)
+            .play(&stream, &subtitles, watch.clone(), start_pos)
             .await?;
         if let Some(watch) = watch {
-            self.store.put("history", &watch.id, &watch)?;
+            self.store.save_watch_entry(&watch, "default")?;
         }
         Ok(())
     }
     pub async fn save_progress(&self) -> Result<()> {
         if let Some(watch) = self.player.progress().await? {
-            self.store.put("history", &watch.id, &watch)?;
+            self.store.save_watch_entry(&watch, "default")?;
         }
         Ok(())
     }
