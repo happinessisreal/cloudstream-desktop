@@ -1,0 +1,4079 @@
+{
+  "schemaVersion": 1,
+  "auditDate": "2026-11-01",
+  "upstreamRepository": "https://github.com/recloudstream/cloudstream",
+  "upstreamCommit": "5024ace2922a148d38df2a816b483b529789cf58",
+  "desktopRoot": "..",
+  "featureCount": 94,
+  "taskCount": 33,
+  "scope": "Source-audited Android behavior and desktop parity specification; not live service certification",
+  "features": [
+    {
+      "category": "Browse",
+      "id": "F001",
+      "feature": "Provider home, featured poster, horizontal rails and expandable shelves",
+      "status": "Partial",
+      "tasks": [
+        "T09"
+      ],
+      "evidence": [
+        "A02",
+        "A05"
+      ]
+    },
+    {
+      "category": "Browse",
+      "id": "F002",
+      "feature": "Homepage category pagination, row pagination, sequential delays and cache",
+      "status": "Partial",
+      "tasks": [
+        "T04",
+        "T09"
+      ],
+      "evidence": [
+        "A02",
+        "A05"
+      ]
+    },
+    {
+      "category": "Browse",
+      "id": "F003",
+      "feature": "Remember selected source; random source/title; no-source home mode",
+      "status": "Partial",
+      "tasks": [
+        "T09"
+      ],
+      "evidence": [
+        "A02",
+        "A28"
+      ]
+    },
+    {
+      "category": "Browse",
+      "id": "F004",
+      "feature": "Continue watching with episode progress; remove individual/all entries",
+      "status": "Partial",
+      "tasks": [
+        "T02",
+        "T12",
+        "T15"
+      ],
+      "evidence": [
+        "A02",
+        "A17"
+      ]
+    },
+    {
+      "category": "Browse",
+      "id": "F005",
+      "feature": "Home bookmark/watch-status selection and profile switching",
+      "status": "Partial",
+      "tasks": [
+        "T10",
+        "T11",
+        "T09"
+      ],
+      "evidence": [
+        "A02",
+        "A15",
+        "A16"
+      ]
+    },
+    {
+      "category": "Browse",
+      "id": "F006",
+      "feature": "Poster title/score/quality/dub/sub/episode badges and display toggles",
+      "status": "Partial",
+      "tasks": [
+        "T03",
+        "T30"
+      ],
+      "evidence": [
+        "A05",
+        "A28"
+      ]
+    },
+    {
+      "category": "Browse",
+      "id": "F007",
+      "feature": "Full media taxonomy, not just Movie/TV/Anime filters",
+      "status": "Partial",
+      "tasks": [
+        "T03",
+        "T08",
+        "T30"
+      ],
+      "evidence": [
+        "A05",
+        "A26"
+      ]
+    },
+    {
+      "category": "Search",
+      "id": "F008",
+      "feature": "Search across multiple selected sources with partial results and errors",
+      "status": "Missing",
+      "tasks": [
+        "T04",
+        "T08"
+      ],
+      "evidence": [
+        "A03"
+      ]
+    },
+    {
+      "category": "Search",
+      "id": "F009",
+      "feature": "Per-source next pages; grouped/merged search layouts",
+      "status": "Partial",
+      "tasks": [
+        "T08"
+      ],
+      "evidence": [
+        "A03"
+      ]
+    },
+    {
+      "category": "Search",
+      "id": "F010",
+      "feature": "Search history, delete/clear history, profile isolation",
+      "status": "Missing",
+      "tasks": [
+        "T08",
+        "T11"
+      ],
+      "evidence": [
+        "A03",
+        "A17"
+      ]
+    },
+    {
+      "category": "Search",
+      "id": "F011",
+      "feature": "Debounced remote suggestions, opt-out and cancellation",
+      "status": "Missing",
+      "tasks": [
+        "T08"
+      ],
+      "evidence": [
+        "A03",
+        "A28"
+      ]
+    },
+    {
+      "category": "Search",
+      "id": "F012",
+      "feature": "Quick search, metadata search and source fallback",
+      "status": "Missing",
+      "tasks": [
+        "T03",
+        "T08",
+        "T24"
+      ],
+      "evidence": [
+        "A03",
+        "A05",
+        "A18"
+      ]
+    },
+    {
+      "category": "Search",
+      "id": "F013",
+      "feature": "Source language/type/sub-dub/quality filters and preferred sources",
+      "status": "Partial",
+      "tasks": [
+        "T08",
+        "T30"
+      ],
+      "evidence": [
+        "A03",
+        "A26",
+        "A28"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F014",
+      "feature": "Plot, tags, poster, year and duration",
+      "status": "Partial",
+      "tasks": [
+        "T03",
+        "T12"
+      ],
+      "evidence": [
+        "A04",
+        "A05"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F015",
+      "feature": "Backdrop/logo, score, content rating, status, coming soon and next airing",
+      "status": "Missing",
+      "tasks": [
+        "T03",
+        "T12"
+      ],
+      "evidence": [
+        "A04",
+        "A05"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F016",
+      "feature": "Actors, roles, related/recommended titles and provider/metadata links",
+      "status": "Missing",
+      "tasks": [
+        "T03",
+        "T12",
+        "T24"
+      ],
+      "evidence": [
+        "A04",
+        "A37"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F017",
+      "feature": "Trailers with preference to disable",
+      "status": "Missing",
+      "tasks": [
+        "T12"
+      ],
+      "evidence": [
+        "A04",
+        "A28"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F018",
+      "feature": "Anime dub/sub groups, seasons, ranges, episode sorting and selection",
+      "status": "Partial",
+      "tasks": [
+        "T03",
+        "T12"
+      ],
+      "evidence": [
+        "A04",
+        "A05"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F019",
+      "feature": "Episode image, synopsis, score, air date, runtime and filler markers",
+      "status": "Partial",
+      "tasks": [
+        "T03",
+        "T12",
+        "T24"
+      ],
+      "evidence": [
+        "A04",
+        "A05"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F020",
+      "feature": "Mark watched/unwatched and mark watched through selected episode",
+      "status": "Missing",
+      "tasks": [
+        "T10",
+        "T12"
+      ],
+      "evidence": [
+        "A04",
+        "A17"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F021",
+      "feature": "Episode action menu: play, mirror, download, subtitles, reload and cast",
+      "status": "Partial",
+      "tasks": [
+        "T12",
+        "T15",
+        "T20",
+        "T22",
+        "T28"
+      ],
+      "evidence": [
+        "A04",
+        "A32"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F022",
+      "feature": "Bookmark status, separate favorite, subscription and tracker controls",
+      "status": "Partial",
+      "tasks": [
+        "T10",
+        "T13",
+        "T23"
+      ],
+      "evidence": [
+        "A04",
+        "A15",
+        "A19"
+      ]
+    },
+    {
+      "category": "Details",
+      "id": "F023",
+      "feature": "Copy/share title, open original source and search another source",
+      "status": "Missing",
+      "tasks": [
+        "T12",
+        "T27"
+      ],
+      "evidence": [
+        "A04",
+        "A03"
+      ]
+    },
+    {
+      "category": "Library",
+      "id": "F024",
+      "feature": "Watching, completed, on hold, dropped and plan to watch lists",
+      "status": "Missing",
+      "tasks": [
+        "T10"
+      ],
+      "evidence": [
+        "A15"
+      ]
+    },
+    {
+      "category": "Library",
+      "id": "F025",
+      "feature": "Favorites and subscribed shows separate from watch status",
+      "status": "Missing",
+      "tasks": [
+        "T10",
+        "T13"
+      ],
+      "evidence": [
+        "A15",
+        "A19"
+      ]
+    },
+    {
+      "category": "Library",
+      "id": "F026",
+      "feature": "Local library search, list tabs and supported sort choices",
+      "status": "Partial",
+      "tasks": [
+        "T10"
+      ],
+      "evidence": [
+        "A15"
+      ]
+    },
+    {
+      "category": "Library",
+      "id": "F027",
+      "feature": "Remote tracking libraries; switch service, refresh and search",
+      "status": "Missing",
+      "tasks": [
+        "T23"
+      ],
+      "evidence": [
+        "A15",
+        "A18"
+      ]
+    },
+    {
+      "category": "Library",
+      "id": "F028",
+      "feature": "Local profiles, profile creation/edit/delete/avatar and startup selector",
+      "status": "Missing",
+      "tasks": [
+        "T11"
+      ],
+      "evidence": [
+        "A16",
+        "A17"
+      ]
+    },
+    {
+      "category": "Library",
+      "id": "F029",
+      "feature": "Profile PIN and biometric gate",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T11"
+      ],
+      "evidence": [
+        "A16",
+        "A30",
+        "A36"
+      ]
+    },
+    {
+      "category": "Library",
+      "id": "F030",
+      "feature": "New-episode subscription checks and notifications",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T13"
+      ],
+      "evidence": [
+        "A19"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F031",
+      "feature": "Resolve mirrors and select source, quality and language preferences",
+      "status": "Partial",
+      "tasks": [
+        "T03",
+        "T16"
+      ],
+      "evidence": [
+        "A07",
+        "A10"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F032",
+      "feature": "Play/pause, seek, fullscreen, position/duration and resume persistence",
+      "status": "Partial",
+      "tasks": [
+        "T02",
+        "T14",
+        "T15"
+      ],
+      "evidence": [
+        "A07",
+        "A08"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F033",
+      "feature": "Volume/mute, speed, aspect/resize, video/audio delay and rotation",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T16"
+      ],
+      "evidence": [
+        "A08",
+        "A29"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F034",
+      "feature": "External and embedded audio/subtitle track selection",
+      "status": "Partial",
+      "tasks": [
+        "T03",
+        "T17"
+      ],
+      "evidence": [
+        "A06",
+        "A07"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F035",
+      "feature": "Next/previous episodes, automatic next, replay, start paused and failover",
+      "status": "Missing",
+      "tasks": [
+        "T14",
+        "T15",
+        "T16"
+      ],
+      "evidence": [
+        "A07",
+        "A29"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F036",
+      "feature": "Subtitle local file, online search, preferred language and downloads",
+      "status": "Partial",
+      "tasks": [
+        "T17",
+        "T22"
+      ],
+      "evidence": [
+        "A07",
+        "A09",
+        "A18"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F037",
+      "feature": "Subtitle styling/font/outline/background/alignment/delay and text cleanup",
+      "status": "Missing",
+      "tasks": [
+        "T17"
+      ],
+      "evidence": [
+        "A09"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F038",
+      "feature": "Skip intro/outro/chapter controls and skip-service timestamps",
+      "status": "Missing",
+      "tasks": [
+        "T18"
+      ],
+      "evidence": [
+        "A07",
+        "A11"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F039",
+      "feature": "Seekbar thumbnail preview and player metadata overlay",
+      "status": "Missing",
+      "tasks": [
+        "T18"
+      ],
+      "evidence": [
+        "A08",
+        "A28",
+        "A29"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F040",
+      "feature": "Source/quality priority profiles with automatic selection",
+      "status": "Missing",
+      "tasks": [
+        "T16"
+      ],
+      "evidence": [
+        "A10"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F041",
+      "feature": "Audio compressor and decoding/cache/buffer settings",
+      "status": "Missing",
+      "tasks": [
+        "T16",
+        "T18"
+      ],
+      "evidence": [
+        "A08",
+        "A29"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F042",
+      "feature": "Control lock, gestures, double click/tap seek and long press speed",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T18",
+        "T30"
+      ],
+      "evidence": [
+        "A29",
+        "A36"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F043",
+      "feature": "Picture in picture and background media controls",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T18",
+        "T27"
+      ],
+      "evidence": [
+        "A07",
+        "A36"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F044",
+      "feature": "Custom request headers, referer and session cookies for media resources",
+      "status": "Partial",
+      "tasks": [
+        "T05",
+        "T19"
+      ],
+      "evidence": [
+        "A05",
+        "A06",
+        "A08"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F045",
+      "feature": "Extractor verification job and per-video network interceptor",
+      "status": "Missing",
+      "tasks": [
+        "T03",
+        "T19"
+      ],
+      "evidence": [
+        "A05",
+        "A07"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F046",
+      "feature": "Playlists and separate audio resources in stream model",
+      "status": "Missing",
+      "tasks": [
+        "T03",
+        "T16",
+        "T17"
+      ],
+      "evidence": [
+        "A06"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F047",
+      "feature": "DRM-aware streams and supported license/key configuration",
+      "status": "Missing / conditional",
+      "tasks": [
+        "T29"
+      ],
+      "evidence": [
+        "A06",
+        "A08"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F048",
+      "feature": "Live streams, live-edge/seek-window behavior",
+      "status": "Partial",
+      "tasks": [
+        "T29"
+      ],
+      "evidence": [
+        "A05",
+        "A34"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F049",
+      "feature": "Torrent/magnet playback and download-progress integration",
+      "status": "Missing / conditional",
+      "tasks": [
+        "T29"
+      ],
+      "evidence": [
+        "A05",
+        "A34"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F050",
+      "feature": "Direct URLs and external play/share/file entry points",
+      "status": "Partial",
+      "tasks": [
+        "T27"
+      ],
+      "evidence": [
+        "A01",
+        "A32"
+      ]
+    },
+    {
+      "category": "Playback",
+      "id": "F051",
+      "feature": "Preferred external player, browser, clipboard, manifest and other actions",
+      "status": "Partial / adapt",
+      "tasks": [
+        "T27"
+      ],
+      "evidence": [
+        "A32"
+      ]
+    },
+    {
+      "category": "Downloads",
+      "id": "F052",
+      "feature": "Single film/episode, selected mirror and episode range/all downloads",
+      "status": "Missing",
+      "tasks": [
+        "T20",
+        "T21"
+      ],
+      "evidence": [
+        "A04",
+        "A12"
+      ]
+    },
+    {
+      "category": "Downloads",
+      "id": "F053",
+      "feature": "Persistent queue: pause/resume/cancel/retry/reorder/clear",
+      "status": "Missing",
+      "tasks": [
+        "T20"
+      ],
+      "evidence": [
+        "A13"
+      ]
+    },
+    {
+      "category": "Downloads",
+      "id": "F054",
+      "feature": "HTTP range transfers, reconnect and bounded parallel connections",
+      "status": "Missing",
+      "tasks": [
+        "T20"
+      ],
+      "evidence": [
+        "A12"
+      ]
+    },
+    {
+      "category": "Downloads",
+      "id": "F055",
+      "feature": "HLS playlist/segment downloads and subtitle companions",
+      "status": "Missing",
+      "tasks": [
+        "T21"
+      ],
+      "evidence": [
+        "A12"
+      ]
+    },
+    {
+      "category": "Downloads",
+      "id": "F056",
+      "feature": "Download directory picker, filenames, disk use and deletion",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T20",
+        "T21"
+      ],
+      "evidence": [
+        "A12",
+        "A27"
+      ]
+    },
+    {
+      "category": "Downloads",
+      "id": "F057",
+      "feature": "Offline title/episode catalog, local playback and offline progress",
+      "status": "Missing",
+      "tasks": [
+        "T21"
+      ],
+      "evidence": [
+        "A13",
+        "A14"
+      ]
+    },
+    {
+      "category": "Downloads",
+      "id": "F058",
+      "feature": "Download notification/progress, restart recovery and queue service",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T20",
+        "T27"
+      ],
+      "evidence": [
+        "A13",
+        "A01"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F059",
+      "feature": "AniList tracking/account/library integration",
+      "status": "Missing",
+      "tasks": [
+        "T23"
+      ],
+      "evidence": [
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F060",
+      "feature": "MyAnimeList tracking/account/library integration",
+      "status": "Missing",
+      "tasks": [
+        "T23"
+      ],
+      "evidence": [
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F061",
+      "feature": "Kitsu tracking/account/library integration",
+      "status": "Missing",
+      "tasks": [
+        "T23"
+      ],
+      "evidence": [
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F062",
+      "feature": "Simkl tracking/account/library integration",
+      "status": "Missing",
+      "tasks": [
+        "T23"
+      ],
+      "evidence": [
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F063",
+      "feature": "Progress/status/score sync, metadata matching and manual correction",
+      "status": "Missing",
+      "tasks": [
+        "T23",
+        "T24"
+      ],
+      "evidence": [
+        "A04",
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F064",
+      "feature": "OpenSubtitles, Addic7ed, Subdl and SubSource subtitle providers",
+      "status": "Missing",
+      "tasks": [
+        "T22"
+      ],
+      "evidence": [
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F065",
+      "feature": "Multiple service accounts per local profile and logout",
+      "status": "Missing",
+      "tasks": [
+        "T11",
+        "T22",
+        "T23"
+      ],
+      "evidence": [
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F066",
+      "feature": "AnimeSkip authentication and AniSkip/intro database lookups",
+      "status": "Missing",
+      "tasks": [
+        "T18",
+        "T23"
+      ],
+      "evidence": [
+        "A11",
+        "A18"
+      ]
+    },
+    {
+      "category": "Accounts",
+      "id": "F067",
+      "feature": "Metadata providers: TMDB, cross-TMDB, Trakt, MyDramaList and ID mapping",
+      "status": "Missing / conditional",
+      "tasks": [
+        "T24"
+      ],
+      "evidence": [
+        "A05",
+        "A37"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F068",
+      "feature": "Existing repositories, manifest lists and install/remove extensions",
+      "status": "Present, limited runtime",
+      "tasks": [
+        "T06",
+        "T07"
+      ],
+      "evidence": [
+        "A21"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F069",
+      "feature": "URL/deep-link/share/short-code repository entry and repository metadata",
+      "status": "Partial",
+      "tasks": [
+        "T06",
+        "T27"
+      ],
+      "evidence": [
+        "A01",
+        "A21",
+        "A22"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F070",
+      "feature": "Extension search, language/type/status/installed filters and bulk actions",
+      "status": "Partial",
+      "tasks": [
+        "T06",
+        "T07"
+      ],
+      "evidence": [
+        "A22"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F071",
+      "feature": "Extension description, author, icon, size, version and website; votes exist in legacy detail code",
+      "status": "Partial",
+      "tasks": [
+        "T06"
+      ],
+      "evidence": [
+        "A22"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F072",
+      "feature": "Manual/automatic plugin updates, local packages and load diagnostics",
+      "status": "Partial",
+      "tasks": [
+        "T06",
+        "T07",
+        "T32"
+      ],
+      "evidence": [
+        "A21",
+        "A22",
+        "A31"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F073",
+      "feature": "Provider self tests with detailed results",
+      "status": "Missing",
+      "tasks": [
+        "T07"
+      ],
+      "evidence": [
+        "A23"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F074",
+      "feature": "Unmodified CS3 loading and provider/extractor registrations",
+      "status": "Partial",
+      "tasks": [
+        "T05",
+        "T33"
+      ],
+      "evidence": [
+        "A21",
+        "A05",
+        "A06"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F075",
+      "feature": "Plugin resources, Context/UI settings, custom actions and Android services",
+      "status": "Missing",
+      "tasks": [
+        "T33"
+      ],
+      "evidence": [
+        "A21",
+        "A22",
+        "A32"
+      ]
+    },
+    {
+      "category": "Extensions",
+      "id": "F076",
+      "feature": "Plugin credentials, clone/override sites and provider capabilities",
+      "status": "Missing",
+      "tasks": [
+        "T03",
+        "T05",
+        "T06"
+      ],
+      "evidence": [
+        "A05",
+        "A27"
+      ]
+    },
+    {
+      "category": "Network",
+      "id": "F077",
+      "feature": "WebView request interception, JS callbacks and browser challenge flows",
+      "status": "Missing",
+      "tasks": [
+        "T19",
+        "T33"
+      ],
+      "evidence": [
+        "A24",
+        "A25"
+      ]
+    },
+    {
+      "category": "Network",
+      "id": "F078",
+      "feature": "DNS over HTTPS selection and optional GitHub/jsDelivr proxy",
+      "status": "Missing",
+      "tasks": [
+        "T19",
+        "T30"
+      ],
+      "evidence": [
+        "A24",
+        "A27"
+      ]
+    },
+    {
+      "category": "Network",
+      "id": "F079",
+      "feature": "Provider timeouts, cancellation, caching and error recovery",
+      "status": "Partial",
+      "tasks": [
+        "T04",
+        "T05",
+        "T09"
+      ],
+      "evidence": [
+        "A05"
+      ]
+    },
+    {
+      "category": "Transfer",
+      "id": "F080",
+      "feature": "Selective settings/data backup and restore",
+      "status": "Missing",
+      "tasks": [
+        "T25"
+      ],
+      "evidence": [
+        "A20"
+      ]
+    },
+    {
+      "category": "Transfer",
+      "id": "F081",
+      "feature": "Scheduled backups, destination and retention behavior",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T26"
+      ],
+      "evidence": [
+        "A20",
+        "A31"
+      ]
+    },
+    {
+      "category": "Transfer",
+      "id": "F082",
+      "feature": "Transfer Android library, watched state, profiles and settings to Linux",
+      "status": "Missing; desktop requirement",
+      "tasks": [
+        "T25"
+      ],
+      "evidence": [
+        "A17",
+        "A20"
+      ]
+    },
+    {
+      "category": "Preferences",
+      "id": "F083",
+      "feature": "Searchable settings grouped by general/UI/player/providers/accounts/updates",
+      "status": "Missing",
+      "tasks": [
+        "T01",
+        "T30"
+      ],
+      "evidence": [
+        "A26",
+        "A27",
+        "A28",
+        "A29",
+        "A30",
+        "A31"
+      ]
+    },
+    {
+      "category": "Preferences",
+      "id": "F084",
+      "feature": "Theme, accent, poster size/detail toggles and alternate layouts",
+      "status": "Partial",
+      "tasks": [
+        "T30"
+      ],
+      "evidence": [
+        "A26",
+        "A28"
+      ]
+    },
+    {
+      "category": "Preferences",
+      "id": "F085",
+      "feature": "Language selection, translated resources and initial setup/redo setup",
+      "status": "Missing",
+      "tasks": [
+        "T30",
+        "T31"
+      ],
+      "evidence": [
+        "A27",
+        "A35"
+      ]
+    },
+    {
+      "category": "Preferences",
+      "id": "F086",
+      "feature": "Player, subtitle, network, download, update and backup preferences",
+      "status": "Missing",
+      "tasks": [
+        "T01",
+        "T16",
+        "T17",
+        "T19",
+        "T20",
+        "T26",
+        "T32"
+      ],
+      "evidence": [
+        "A26",
+        "A29",
+        "A31"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F087",
+      "feature": "Chromecast discovery/session/queue/remote controls and styled subtitles",
+      "status": "Missing / conditional",
+      "tasks": [
+        "T28"
+      ],
+      "evidence": [
+        "A33",
+        "A09"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F088",
+      "feature": "FCast discovery/session action",
+      "status": "Missing / conditional",
+      "tasks": [
+        "T28"
+      ],
+      "evidence": [
+        "A33",
+        "A32"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F089",
+      "feature": "Phone/tablet/TV/emulator layouts, focus navigation and TV continue watching",
+      "status": "Partial / adapt",
+      "tasks": [
+        "T30",
+        "T27"
+      ],
+      "evidence": [
+        "A01",
+        "A36"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F090",
+      "feature": "System media session, headset controls, audio focus and screen wake",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T27"
+      ],
+      "evidence": [
+        "A07",
+        "A36"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F091",
+      "feature": "Application update checks, prerelease and installer choice",
+      "status": "Missing / adapt",
+      "tasks": [
+        "T32"
+      ],
+      "evidence": [
+        "A31"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F092",
+      "feature": "Log viewer/error reporting and runtime diagnostics",
+      "status": "Partial / adapt",
+      "tasks": [
+        "T32"
+      ],
+      "evidence": [
+        "A31"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F093",
+      "feature": "Project links, disclaimer/legal notices and banana/Monke easter egg",
+      "status": "Partial / optional",
+      "tasks": [
+        "T30",
+        "T32"
+      ],
+      "evidence": [
+        "A27",
+        "A01"
+      ]
+    },
+    {
+      "category": "Platform",
+      "id": "F094",
+      "feature": "Android storage permissions, battery exemptions, APK installer and receiver services",
+      "status": "Platform-specific",
+      "tasks": [
+        "T27",
+        "T32"
+      ],
+      "evidence": [
+        "A01",
+        "A27",
+        "A31"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T01",
+      "title": "Versioned storage, settings service and view state",
+      "priority": "P0",
+      "dependsOn": [],
+      "complexity": "Medium",
+      "androidSources": [
+        "A17",
+        "A26"
+      ],
+      "desktopTargets": [
+        "crates/core/src/store.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/lib/api.ts",
+        "src/lib/types.ts",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add an ordered, transactional migration runner using user_version. Preserve records version 1 and keep a copyable fixture of that database; do not require a new installation.",
+        "Introduce typed Settings with schemaVersion, global/device values and profile-scoped values. Persist in Rust, expose get/update commands, validate ranges and apply defaults to absent fields. Use the settings inventory below for semantics; add only settings with working consumers.",
+        "Move poster density from localStorage into settings with one-time migration and preserve its current choice. Extract typed UI state/error helpers as touched, without a whole-app refactor."
+      ],
+      "acceptance": [
+        "Version-1 repository, package, bookmark and history records survive upgrade and reopening. Failed migration rolls back.",
+        "Settings update persists across restart and does not erase unknown future fields on unrelated updates. Defaults and invalid values are tested."
+      ],
+      "validation": [
+        "Rust old-database fixture and migration failure test; npm run check; existing UI density test."
+      ]
+    },
+    {
+      "id": "T02",
+      "title": "Stable media/episode identity and progress migration",
+      "priority": "P0",
+      "dependsOn": [
+        "T01"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A05",
+        "A17"
+      ],
+      "desktopTargets": [
+        "crates/core/src/models.rs",
+        "crates/core/src/lib.rs",
+        "crates/core/src/store.rs",
+        "crates/core/src/player.rs",
+        "src/lib/types.ts"
+      ],
+      "steps": [
+        "Introduce stable mediaId and episodeId plus alias records. Scope media by providerId and provider uniqueUrl when available, keeping the original provider URL separately. Preserve existing providerId and installed package IDs.",
+        "Use provider episode identity when supplied; otherwise parent mediaId + dub group + season + episode. For unnumbered episodes persist a disambiguated original-list identity with aliases; do not hash token-bearing data as the primary ID. Store fresh opaque data separately and retain data-hash aliases for existing entries.",
+        "Migrate bookmark/history records transactionally. Map ambiguous entries conservatively, retaining unresolved records for review. Resolve newest episode payload on resume without overwriting known progress. Define seconds for playback, epoch milliseconds for new timestamps, explicit conversions for legacy seconds."
+      ],
+      "acceptance": [
+        "Changed episode token retains progress; same numbered episode in two dub groups remains distinct; movie synthetic episode stays stable.",
+        "Existing bookmarks/history remain visible. Missing provider can be reported without deleting progress. Duplicate/unnumbered episodes never overwrite each other."
+      ],
+      "validation": [
+        "Rust identity/migration fixtures with Unicode, colon-containing provider names, duplicate names and changed token payloads."
+      ]
+    },
+    {
+      "id": "T03",
+      "title": "Complete typed provider/media/stream bridge",
+      "priority": "P0",
+      "dependsOn": [
+        "T01",
+        "T02"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A05",
+        "A06"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "protocol/README.md",
+        "crates/core/src/models.rs",
+        "src/lib/types.ts",
+        "src/lib/api.ts"
+      ],
+      "steps": [
+        "Implement the contract additions below in Kotlin mapping, Rust serde and TS types together. Preserve null vs absent semantics and unknown type strings. Add provider capability/timeouts, row identity/orientation, search score/quality/year and dub counts.",
+        "Add rich detail fields, structured dub/season/episode data, sync IDs, trailers/recommendations/actors and uniqueUrl. Keep the legacy episodes list during migration if consumers require it. Do not infer dub status from a translated name prefix.",
+        "Add discriminated streams for direct/HLS/DASH/playlist/torrent/DRM, separate audio resources and subtitle metadata. Retain extractorData and opaque resource handles for verifier/interceptor jobs. Negotiate methods/capabilities, with a protocol version bump for incompatible shapes.",
+        "Use a sample/fake upstream provider to return every supported field. Add serialization snapshots through all layers; rendering empty optional metadata is valid."
+      ],
+      "acceptance": [
+        "No field in an enriched fixture disappears or changes units across worker→Rust→UI. Old saved JSON loads with defaults.",
+        "Unsupported capabilities are explicitly represented and do not become play/download buttons. Current sample and legacy smoke continue to work."
+      ],
+      "validation": [
+        "Kotlin mapper tests, Rust deserialization fixtures, npm run check, worker smoke; update protocol documentation."
+      ]
+    },
+    {
+      "id": "T04",
+      "title": "Request scheduling, cancellation and incremental results",
+      "priority": "P0",
+      "dependsOn": [
+        "T03"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A03",
+        "A05"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "crates/core/src/worker.rs",
+        "src-tauri/src/main.rs",
+        "protocol/README.md",
+        "src/lib/api.ts"
+      ],
+      "steps": [
+        "Separate worker input reading, job execution and a synchronized stdout writer. Track request IDs, cancellation tokens and structured errors. Support out-of-order responses with Rust ID demultiplexing and bounded in-flight jobs.",
+        "Protect plugin load/unload and shared registries from active jobs. Schedule fairly across sources with bounded concurrency and per-provider serialization/delays when needed. Keep shared extractor visibility; do not casually split into isolated plugin processes.",
+        "Emit search/link progress events and final completion exactly once. Use a client generation/session ID so canceled or stale events cannot replace newer results. Retain a capped provider deadline and worker watchdog; only kill/restart when the affected runtime is unresponsive.",
+        "Add cancel support to Tauri and typed UI API; stop abandoned jobs on navigation, new query and window close. Worker restart should fail pending calls once, restore packages and recover the UI."
+      ],
+      "acceptance": [
+        "A hung source cannot indefinitely block a healthy source; canceling one search leaves another active request intact.",
+        "Crash, malformed stdout, late response and unload during a job produce bounded recovery with no duplicate/ghost results."
+      ],
+      "validation": [
+        "Fake slow/crashing worker and two-source integration fixtures; cancellation/stale UI tests."
+      ]
+    },
+    {
+      "id": "T05",
+      "title": "Preserve and measure extension compatibility",
+      "priority": "P0",
+      "dependsOn": [
+        "T03"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A05",
+        "A21",
+        "A25"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/LegacyDex.kt",
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "crates/core/src/worker.rs",
+        "scripts/smoke-legacy.py"
+      ],
+      "steps": [
+        "Create a capability report per package: original format, API revision, actual runtime, providers/extractors registered, required unavailable APIs, resource use and actionable failure. Distinguish an importer/action-only plugin from an empty provider.",
+        "Create lawful local fixtures for pure JAR, unchanged DEX, shared extractor producer/consumer, sanitized Kotlin ABI, unload/reload, old ABI and rejected Android UI/resource dependencies. Record package SHA/version and tested operations in a compatibility manifest.",
+        "Preserve exact external method descriptor resolution and content-addressed translation caches. Add a repeatable known-package smoke job when its package is supplied locally; do not distribute third-party packages without checking redistribution rights.",
+        "Exercise atomic update rollback and worker restoration with partially registered failing plugins. Keep UI honest about supported calls; capability probing must not execute speculative dangerous provider operations."
+      ],
+      "acceptance": [
+        "Fixtures pass through install→registration→search/home→load→links where applicable. Failed load removes partial registrations and restores previous version.",
+        "The existing data-only CS3 route still works; Android/resource/WebView rejection remains explicit until a tested backend exists."
+      ],
+      "validation": [
+        "Kotlin LegacyDexTest, Rust compatibility tests, worker smoke, optional supplied original-CS3 live smoke."
+      ]
+    },
+    {
+      "id": "T06",
+      "title": "Repository and extension management parity",
+      "priority": "P1",
+      "dependsOn": [
+        "T01",
+        "T03",
+        "T05"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A21",
+        "A22",
+        "A27"
+      ],
+      "desktopTargets": [
+        "crates/core/src/repository.rs",
+        "crates/core/src/lib.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add repository refresh, rename/display metadata, copy/share link, local package picker/import and duplicate handling. Route all installations through existing bounded verification/atomic replacement, including local files.",
+        "Expose catalog filtering by name/language/type/status/installed/updates and package detail fields (authors/icon/size/source link). Separate installed but failed, loaded, update available and unsupported runtime.",
+        "Add provider enable/disable preferences, capability-aware source selection and clone-site configuration. For canBeOverridden providers create separate stable clone identities and stored URL/credential handles; no global mutation of the original source.",
+        "Implement repository short codes from RepositoryManager.parseRepoUrl: !-prefixed codes resolve a Location from py.md; other allowed codes use cutt.ly. Validate destinations, bound redirects/timeouts and report resolver unavailability; do not assume those external services remain available. Keep ordinary URL entry working. VotingApi/PluginDetailsFragment implement legacy voting, but the current Compose detail route does not show a vote control: treat voting as optional legacy parity, not a current blocker."
+      ],
+      "acceptance": [
+        "Local JAR and CS3 install use the same checks as remote packages; repositories sharing an internalName remain independent.",
+        "Catalog filters work with zero loaded providers. Clone settings persist and removing a repository does not silently erase library history."
+      ],
+      "validation": [
+        "Local fixture manifests/packages, malformed short-code output, duplicate repo and failed import tests; targeted UI tests."
+      ]
+    },
+    {
+      "id": "T07",
+      "title": "Extension updates, bulk actions and source tester",
+      "priority": "P1",
+      "dependsOn": [
+        "T04",
+        "T05",
+        "T06"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A21",
+        "A22",
+        "A23",
+        "A31"
+      ],
+      "desktopTargets": [
+        "crates/core/src/repository.rs",
+        "crates/core/src/worker.rs",
+        "crates/core/src/lib.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Implement check-for-updates and explicit per-package/bulk update jobs with progress/cancel, changelog metadata if available and a summary of failures. Add automatic updates for installed packages only with a persisted setting and bounded schedule.",
+        "Keep old package hashes/records until replacement loads. Recover an interrupted update transaction on restart. Never auto-install every repository extension: current shared preferences explicitly mark the old auto-download mode unused.",
+        "Add a provider tester inspired by TestViewModel2: capability-aware home/search/details/links stages, duration and diagnostic output. Use a bounded user-started sample, do not download videos or test every title. Track unavailable network separately from bridge incompatibility."
+      ],
+      "acceptance": [
+        "A bad update leaves the previous version playable; mixed batch shows each result. No unexpected new packages are installed.",
+        "Tester can cancel, handle sources lacking home/search/download and report which stage failed without freezing normal navigation."
+      ],
+      "validation": [
+        "Two-version local repository fixtures, interrupted update recovery and slow-source tester tests."
+      ]
+    },
+    {
+      "id": "T08",
+      "title": "Federated search, pagination, history and suggestions",
+      "priority": "P1",
+      "dependsOn": [
+        "T03",
+        "T04"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A03",
+        "A26",
+        "A28"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "src-tauri/src/main.rs",
+        "src/lib/api.ts",
+        "src/lib/types.ts",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add source multi-select plus all-enabled mode. Orchestrate bounded per-source queries using T04, stream results as each finishes and display source-scoped errors/retry. Keep query/session IDs through every event.",
+        "Keep page/hasNext/loading independently per source; support grouped and merged views without collapsing items by title. Add explicit source/type/language/quality/dub filters using structured data. Preferences filter eligible sources; loaded-item filters must not imply server-side search.",
+        "Persist per-profile history with delete and clear; debounce suggestions, cancel stale requests and provide an opt-out since queries leave the device. Add quickSearch only for providers advertising it. Metadata-source search and fallback to provider search come through T24, not guessed URLs."
+      ],
+      "acceptance": [
+        "One failed source still leaves healthy results. Rapid query A→B never shows A after B. Load more affects only the requested source.",
+        "History survives restart, profile changes isolate it; disabling suggestions stops network calls. Empty query and no-source states are useful."
+      ],
+      "validation": [
+        "Three fixture sources (fast/slow/error), pagination/stale cancellation and history UI tests; npm run check."
+      ]
+    },
+    {
+      "id": "T09",
+      "title": "Home parity, category fidelity and caching",
+      "priority": "P1",
+      "dependsOn": [
+        "T03",
+        "T04",
+        "T10"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A02",
+        "A05"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "crates/core/src/lib.rs",
+        "src/App.svelte",
+        "src/lib/MediaRail.svelte",
+        "src/lib/Spotlight.svelte"
+      ],
+      "steps": [
+        "Preserve each HomePageResponse/HomePageList name, list orientation and identity instead of flattening lists into a requested category. Keep section cursor and row page cursors separate and honor sequentialMainPage delays/scroll delays.",
+        "Add a bounded TTL cache by provider identity/package hash/section/page/language preferences. Show cached results while refreshing, invalidate on source or extension changes and avoid caching unresolved errors as empty success.",
+        "Remember selected source per profile, support no-source and random source/title actions, enrich spotlight from details without blocking rails, and add selected watch-status/favorite/subscription rails. Resume supports remove one/clear and uses T02 IDs."
+      ],
+      "acceptance": [
+        "A provider returning two named lists retains both with correct independent more behavior. Cache from source A never appears as source B.",
+        "Source selection survives restart; slow spotlight details do not block search; library rail updates after status/profile changes."
+      ],
+      "validation": [
+        "Multi-row provider fixture, sequential timing check, cache invalidation and homepage UI tests."
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "Local library statuses, favorites and watched episodes",
+      "priority": "P1",
+      "dependsOn": [
+        "T01",
+        "T02",
+        "T03"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A15",
+        "A17",
+        "A04"
+      ],
+      "desktopTargets": [
+        "crates/core/src/models.rs",
+        "crates/core/src/store.rs",
+        "crates/core/src/lib.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add named local watch statuses watching/completed/on_hold/dropped/plan_to_watch/none; keep favorites and subscription as independent attributes. Preserve old bookmarks as saved entries without inventing a prior watch status.",
+        "Implement tabs, local query, alphabetical/updated/release-date sorting and persistent selection. Support score sorting only when actual scores exist; Android LocalList intentionally omits its commented score sort.",
+        "Persist episode watched overrides separately from position and implement mark watched/unwatched/up to this episode in deterministic selected dub/season order. Add remove-one and confirmed bulk clear, and publish changes to Home/Details/Library."
+      ],
+      "acceptance": [
+        "Status, favorite and subscription can coexist without overwriting each other. Old bookmarks remain accessible.",
+        "Watched overrides survive resume updates; mark-through respects dub group and ordering, and never marks unrelated episodes."
+      ],
+      "validation": [
+        "Store reopen/migration and status transition tests; library/details action UI tests."
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "Local profiles, startup selection and access locks",
+      "priority": "P1",
+      "dependsOn": [
+        "T01",
+        "T02",
+        "T10"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A16",
+        "A17",
+        "A18",
+        "A30"
+      ],
+      "desktopTargets": [
+        "crates/core/src/store.rs",
+        "crates/core/src/models.rs",
+        "crates/core/src/lib.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add a default profile during migration and scope library/history/watched/search history/preferences/service-account references by profileId. Repositories/packages stay device-wide initially; source selection and credentials are profile-scoped.",
+        "Implement create/edit/avatar/delete and startup selection/skip setting. On switch, cancel profile jobs, flush playback progress under the original profile, clear caches and reload scoped data. Keep orphaned downloaded files from being unexpectedly deleted.",
+        "Add optional PIN gate using a salted password hash and a reset/recovery design that does not promise encryption. Linux biometrics is optional behind detected OS support; do not copy Android BiometricPrompt or pretend support. New secrets belong in the OS keyring; absence has an explicit fallback/error policy."
+      ],
+      "acceptance": [
+        "Two profiles never see or update each other's history/tokens, including while player events arrive during a switch.",
+        "Deleting a profile requires explicit confirmation and leaves installed packages intact. Legacy data lands in exactly one default profile."
+      ],
+      "validation": [
+        "Migration fixtures, late-event/profile switch test, locked-profile navigation test and keyring mock integration."
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "Rich details and episode browser",
+      "priority": "P1",
+      "dependsOn": [
+        "T03",
+        "T10"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A04",
+        "A05"
+      ],
+      "desktopTargets": [
+        "src/App.svelte",
+        "src/lib/MediaCard.svelte",
+        "src/lib/types.ts",
+        "src/lib/api.ts",
+        "src-tauri/src/main.rs"
+      ],
+      "steps": [
+        "Build a detail view using optional backdrop/logo, score/rating scale, year/runtime, content rating, status/next airing, tags, actors/roles, recommendations and provider links. Render provider text safely; do not inject raw plot HTML.",
+        "Add season selector, structured dub/sub selector, episode ranges, sort modes and virtualized episode rows with synopsis/date/runtime/score/progress/filler state. Preserve episodeId/data when sorting or filtering.",
+        "Implement play/resume, mirror selection, link reload/cancel, bookmark status, favorite, subscription and copy/open/share actions. Gate download/cast/tracker actions on their implemented capabilities; do not add dead controls.",
+        "Add trailer playback with disable preference and cancellation on close; handle extractor-based trailers through worker rather than assuming every trailer is a direct video URL. Recommendations retain original source identity."
+      ],
+      "acceptance": [
+        "Large mixed-dub series stays responsive; selection sends exact chosen opaque data; changing sort never changes watched state.",
+        "Optional metadata absent or a failed trailer does not prevent episode play. Details restore keyboard focus when dismissed."
+      ],
+      "validation": [
+        "Rich/empty/movie/anime/large-series fixtures; opaque data and accessible dialog tests."
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "New-episode subscriptions and notifications",
+      "priority": "P2",
+      "dependsOn": [
+        "T04",
+        "T09",
+        "T10",
+        "T11"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A19",
+        "A15",
+        "A17"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "crates/core/src/store.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Persist subscription snapshot per profile/media/dub group with last observed episode identities/counts and last notification state. Port Android's periodic check intent (source schedules roughly every six hours), not WorkManager classes.",
+        "Add bounded checks on app start/while running, manual refresh and notification opt-in. Reuse cached details and provider deadlines. Notify only for actual new available episodes, not sorting changes or duplicate polls.",
+        "Define Linux lifetime explicitly: first version checks while app runs; closed-app checking requires a later opt-in user service/tray implementation. Notification opens correct media/episode through T27 when available."
+      ],
+      "acceptance": [
+        "New episode yields one notification; restart, transient provider failure and unchanged results do not repeat it.",
+        "Unsubscribe/profile deletion cancels pending work; no claims that checks run while fully closed."
+      ],
+      "validation": [
+        "Fake clock/provider snapshots and notification sink; subscription UI test."
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "Authoritative mpv session state and events",
+      "priority": "P0",
+      "dependsOn": [
+        "T02",
+        "T03"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A07",
+        "A08"
+      ],
+      "desktopTargets": [
+        "crates/core/src/player.rs",
+        "crates/core/src/lib.rs",
+        "src-tauri/src/main.rs",
+        "src/lib/api.ts",
+        "src/lib/types.ts",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Keep mpv as the working playback backend. Add a persistent IPC reader, request/response IDs and observe_property events for position/duration/pause/volume/speed/tracks/cache. Handle file-loaded, end-file(reason), shutdown and command errors.",
+        "Create a playback sessionId carrying profileId/mediaId/episodeId and source selection; publish typed player events from Rust to Tauri. Replace optimistic nowPlaying/paused UI with actual state; throttle progress events and flush at pause, end, stop and app close.",
+        "Keep the existing private short Unix-socket directory permissions and literal-header handling. Clean up only processes/sockets owned by the session. Do not kill unrelated mpv processes; handle missing mpv and window closure."
+      ],
+      "acceptance": [
+        "Closing/pausing native mpv immediately updates desktop state and saves progress to correct episode/profile.",
+        "Stop is idempotent; failed open does not show playing; stale events cannot affect a new session."
+      ],
+      "validation": [
+        "Extend native player_linux integration for property events/exit; fake IPC event ordering tests; player UI state test."
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "Episode queues, resume and automatic next",
+      "priority": "P1",
+      "dependsOn": [
+        "T12",
+        "T14"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A07",
+        "A04",
+        "A29"
+      ],
+      "desktopTargets": [
+        "crates/core/src/player.rs",
+        "crates/core/src/lib.rs",
+        "src/lib/types.ts",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add a playback queue of episode references (not expiring resolved URLs), previous/next selection and exact current index. Resolve links just in time and reuse the selected quality/language policy.",
+        "Define completion/resume thresholds as configurable documented desktop policy; retain explicitly watched state separately. Save final progress, autoplay only on normal EOF, respect auto-next/start-paused preferences and optionally prefetch next links with cancellation.",
+        "Handle last episode, disabled/unavailable source, network failure and manually stopped playback. Preserve position on mirror changes and ask/show recoverable error when no source remains. Resume reloads current provider data using T02 aliases."
+      ],
+      "acceptance": [
+        "EOF advances exactly once; user stop/error never unexpectedly advances. Same episode resumes after URL/token refresh.",
+        "Next/previous stays in selected dub/season ordering, honors autoplay off and never plays another profile's queue."
+      ],
+      "validation": [
+        "Fake EOF/manual stop/error fixtures; two short local video native integration; queue UI test."
+      ]
+    },
+    {
+      "id": "T16",
+      "title": "Player controls, quality policy and decoding preferences",
+      "priority": "P1",
+      "dependsOn": [
+        "T03",
+        "T14",
+        "T15"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A08",
+        "A10",
+        "A29"
+      ],
+      "desktopTargets": [
+        "crates/core/src/player.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Expose volume/mute, absolute seek/scrubber, speed, fullscreen, aspect/fit and audio/video delay through a typed command enum with validated numeric limits. Keep pause/relative seek/stop working. Add rotation where mpv supports it.",
+        "Implement quality/source priority profiles with actual upstream labels/quality values, preferred language and deterministic tie-breaks. Allow manual mirror switching at the same position and bounded failover; preserve request context per resource.",
+        "Wire start-paused, hardware/software decoding, buffer/cache limits and optional dynamic audio compressor to actual mpv properties/options. Validate options against the installed mpv version and show unsupported capabilities. Multi-segment ExtractorLinkPlayList needs a tested timeline adapter; do not play just its first segment."
+      ],
+      "acceptance": [
+        "Controls match actual mpv state and persist intended settings; rejected commands produce useful errors.",
+        "Quality selection handles unknown quality without inventing resolution, and switching source retains position and chosen tracks when possible."
+      ],
+      "validation": [
+        "IPC command fixtures, local alternate mirrors/playlist fixture and native control smoke; UI keyboard control tests."
+      ]
+    },
+    {
+      "id": "T17",
+      "title": "Subtitles and audio selection/styles",
+      "priority": "P1",
+      "dependsOn": [
+        "T03",
+        "T14",
+        "T19"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A06",
+        "A07",
+        "A09"
+      ],
+      "desktopTargets": [
+        "crates/core/src/player.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Expose embedded tracks from mpv plus resolved external audio/subtitles with language/format/label/forced/hearing-impaired metadata. Add track pickers, off option, local subtitle file picker, language preference and subtitle/audio delay.",
+        "Use T19 request context for header/cookie-protected subtitles and separate audio; do not pass one global subtitle header map to all resources. Support common subtitle files and archives through bounded safe extraction; keep temporary assets through session lifetime.",
+        "Add subtitle preview and persisted font/size/color/bold/italic/outline/shadow/background/alignment/elevation settings, reset/undo and custom font picker. Map to mpv/libass options accurately; explicitly report unsupported styling combinations.",
+        "Caption/music/bloat removal and uppercase are opt-in text transforms on a copied asset; never overwrite the downloaded original. Respect ASS styling unless the user requests override."
+      ],
+      "acceptance": [
+        "Protected subtitle and separate audio fixtures play with correct per-resource headers; language/off preference survives restart.",
+        "Switching tracks/delay/style does not restart progress or modify originals; Unicode/RTL subtitle and path-with-spaces fixtures work."
+      ],
+      "validation": [
+        "Local header-protected subtitle/audio server fixture, track-event tests, style preview/reset UI tests and native playback smoke."
+      ]
+    },
+    {
+      "id": "T18",
+      "title": "Skip markers, previews, gestures and mini player",
+      "priority": "P2",
+      "dependsOn": [
+        "T03",
+        "T14",
+        "T16",
+        "T17",
+        "T24"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A07",
+        "A08",
+        "A09",
+        "A11",
+        "A29",
+        "A36"
+      ],
+      "desktopTargets": [
+        "crates/core/src/player.rs",
+        "crates/core/src/lib.rs",
+        "src/App.svelte",
+        "src/style.css"
+      ],
+      "steps": [
+        "Add episode chapters/skip intervals as optional timed metadata. Implement source-specific AniSkip/AnimeSkip/IntroDbSkip/TheIntroDBSkip adapters one at a time with metadata ID matching, provider enable switches and a manual skip fallback. Never guess timestamp matches from title text alone.",
+        "Add bounded thumbnail preview generation/caching for seekbar with timeout/cancel; avoid spawning unlimited ffmpeg/mpv processes. Add optional metadata overlay and control visibility preferences.",
+        "Implement configurable keyboard/double-click seek, temporary speed hold and control lock; touch gestures are optional. Use desktop volume/brightness controls without silently changing system brightness.",
+        "Implement mini-player/picture-in-picture as an always-on-top native mpv/window mode with compositor-aware capability fallback. Do not promise a browser PiP feature for an external mpv renderer."
+      ],
+      "acceptance": [
+        "Wrong/unmatched metadata never triggers automatic skip. Skip end stays within duration and preference off stops service calls.",
+        "Preview requests cancel on close, disabled previews use no extraction resources, and fullscreen/mini-player can be exited by keyboard."
+      ],
+      "validation": [
+        "Fixture skip-service responses, local video thumbnails with cancellation, gesture/keyboard UI test and native window-mode manual smoke."
+      ]
+    },
+    {
+      "id": "T19",
+      "title": "Session-aware media transport and WebView integration boundary",
+      "priority": "P0",
+      "dependsOn": [
+        "T03",
+        "T04",
+        "T05"
+      ],
+      "complexity": "High / specialist",
+      "androidSources": [
+        "A05",
+        "A06",
+        "A24",
+        "A25"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "crates/core/src/worker.rs",
+        "crates/core/src/player.rs",
+        "src-tauri/src/main.rs",
+        "protocol/README.md"
+      ],
+      "steps": [
+        "Design an opaque resource/session handle so provider-owned OkHttp cookie jar, getVideoInterceptor and extractorVerifierJob stay in the worker that owns them. Rust/player asks that service for media rather than attempting to serialize an interceptor or session cookies into UI fields.",
+        "Add a loopback-only, random-port media transport with per-session unpredictable tokens (or equivalent private transport). Preserve GET/HEAD/Range/status/Content-Range/cancellation; rewrite nested HLS/DASH resource references to retain correct context; restrict upstream origins according to resource/session policy. Do not expose arbitrary fetch endpoints or attach credentials to unrelated redirects.",
+        "Route protected posters, subtitles and audio independently. Keep credentials out of mpv argv/diagnostics where possible; do not send raw session state to the UI. Maintain an explicit fallback for ordinary header-only links.",
+        "The JVM WebView resolver is a TODO. First add structured unsupported reports and bridge interfaces; actual WebView/browser request interception is a separate T33 milestone. Tauri navigation callbacks alone do not provide all upstream request interception/body/cookie semantics. Add DoH/proxy selection only with a real shared network consumer and correct cache/session scoping."
+      ],
+      "acceptance": [
+        "Local manifest→segment→key/subtitle/audio fixture receives exact per-origin headers/cookies and Range behavior. Verifier starts/stops with playback.",
+        "Invalid token, redirect to unrelated origin, canceled session and worker crash fail closed with useful errors; no generic publicly reachable proxy exists."
+      ],
+      "validation": [
+        "Deterministic multi-origin transport fixture suite, verifier lifecycle fixture, IPC reconnect tests; no live challenge service needed for CI."
+      ]
+    },
+    {
+      "id": "T20",
+      "title": "Persistent download engine and direct-file queue",
+      "priority": "P1",
+      "dependsOn": [
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T19"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A12",
+        "A13",
+        "A27"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "crates/core/src/store.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Create new download modules with persisted job state machine queued/resolving/downloading/paused/completed/failed/canceled and progress events. Store profile/media/episode identity, provider payload reference, destination, selected policy and validators; URLs may expire.",
+        "Implement direct-file GET with resumable Range, ETag/Last-Modified validation, retries/backoff, per-job cancellation and bounded global jobs/per-file connections. Detect servers ignoring Range and restart safely rather than append duplicate bytes.",
+        "Add pause/resume/cancel/retry/reorder/clear queue, mirror choice, single/range/all episode enqueue with duplicate protection. Choose folder via native picker, sanitize filenames and persist metadata independently from display names. Confirm disk file deletion separately from queue removal.",
+        "Use .part files, atomic completion, free-space errors, startup recovery and visible size/speed/remaining state. Preserve session transport from T19; no browser-only fake downloader."
+      ],
+      "acceptance": [
+        "Restart during transfer resumes or safely restarts without corrupt output; completed file matches fixture hash.",
+        "Cancel releases connections, no writes escape the chosen directory, duplicate enqueue is idempotent and max jobs/connections is respected."
+      ],
+      "validation": [
+        "Local HTTP servers with 206/200/416, changed ETag, disconnect and disk-error fixtures; persistent queue/UI tests."
+      ]
+    },
+    {
+      "id": "T21",
+      "title": "HLS downloads, offline catalog and subtitles",
+      "priority": "P1",
+      "dependsOn": [
+        "T17",
+        "T20"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "crates/core/src/store.rs",
+        "crates/core/src/player.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Extend downloads to HLS master/media playlists, relative segments, byte ranges, init segments, AES-128 keys and discontinuities with deterministic ordered resume state. Select variant/audio tracks according to policy; validate supported encryption/types and report unsupported DRM rather than corrupting a file.",
+        "Decide and document output strategy (local playlist/assets or a validated remux tool). Do not concatenate arbitrary fragmented MP4 segments and call them a valid MP4. Use T19 per-resource session handling and protect key storage.",
+        "Add offline catalog grouped by title/season, episode progress, subtitle selection/download, file existence repair, storage size and confirmed deletion. Play entirely from local assets with network disabled and save progress against the same stable episode identity.",
+        "For a file downloaded by another profile, preserve original ownership and apply deliberate sharing policy; do not delete media just because a profile or plugin is removed. DASH offline downloading is optional until separately implemented/tested."
+      ],
+      "acceptance": [
+        "Fixture HLS with separate audio, relative URLs and restart produces playable complete media; missing/changed segment is diagnosed.",
+        "Offline movie/episode and subtitles work with networking blocked. Delete cleans only owned assets and metadata, with no orphan partials."
+      ],
+      "validation": [
+        "Deterministic HLS fixture suite, offline native smoke and catalog/delete UI tests."
+      ]
+    },
+    {
+      "id": "T22",
+      "title": "Online subtitle provider adapters",
+      "priority": "P2",
+      "dependsOn": [
+        "T11",
+        "T17"
+      ],
+      "complexity": "Medium per adapter",
+      "androidSources": [
+        "A18",
+        "A07",
+        "A09",
+        "A40"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Define SubtitleProvider trait for search/resource/login/logout/capabilities and per-profile account selection. Implement one adapter per patch: OpenSubtitles, Addic7ed, Subdl, SubSource. Read its Android implementation and current official API requirements; source registration alone does not prove the service still works.",
+        "Search by structured title/IDs/year/season/episode/language/hearing-impaired preference; preserve release and language labels. Download selected resource with its headers/session, unpack archives safely and attach through T17; no automatic wrong-title fallback.",
+        "Use OS keyring references, token refresh/rate-limit handling and real disconnected/connected states. Supply service app IDs/keys through documented configuration where needed, never copy upstream private credentials. Support unauthenticated adapters only if their actual API permits it."
+      ],
+      "acceptance": [
+        "Each adapter passes the common fake-transport contract before a live smoke is declared. Wrong/no results and API limit errors remain distinct.",
+        "Credentials stay profile-scoped and logout revokes local access; subtitle selection actually changes the player."
+      ],
+      "validation": [
+        "Recorded/redacted response fixtures; mock auth/expiry/429 tests; optional user-authorized live smoke per service."
+      ]
+    },
+    {
+      "id": "T23",
+      "title": "Tracking accounts, remote libraries and progress sync",
+      "priority": "P2",
+      "dependsOn": [
+        "T10",
+        "T11",
+        "T14",
+        "T24"
+      ],
+      "complexity": "High per adapter",
+      "androidSources": [
+        "A18",
+        "A15",
+        "A04",
+        "A39"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "crates/core/src/store.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Define TrackingProvider trait and shared account/remote-library models. Implement AniList, MyAnimeList, Kitsu and Simkl as separate patches using source behavior plus verified current official auth/API requirements. Do not add a Trakt tracking account merely because a Trakt metadata provider exists.",
+        "Use external-browser OAuth with validated state and PKCE where supported, native deep-link/loopback callbacks, secret storage and token refresh/revoke. Other login methods follow each service's supported flow. Multiple accounts are scoped to a local profile.",
+        "Add remote-library service selection, refresh, paginated status tabs, supported sorts, manual metadata-ID match correction and editing score/status/episode progress. Keep local and remote status enum conversion explicit; remote rewatching is not local none.",
+        "Queue idempotent sync mutations with origin/timestamp, offline retry/rate limits and visible conflict resolution. Define watched threshold policy and only sync eligible completed episode progress; dragging a seekbar must not mark an entire series complete. Prevent feedback loops when applying remote changes."
+      ],
+      "acceptance": [
+        "Every adapter passes a common contract with real score scale/status mapping; account switching never cross-writes libraries.",
+        "Offline completion queues once, reconnect syncs once; expired auth prompts re-login without erasing local progress. Conflicts are visible and recoverable."
+      ],
+      "validation": [
+        "Fake OAuth server and service responses, status/score round trips, retry/idempotency/profile isolation tests; optional live smoke per configured service."
+      ]
+    },
+    {
+      "id": "T24",
+      "title": "Metadata matching, rich posters and filler enrichment",
+      "priority": "P1",
+      "dependsOn": [
+        "T03"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A05",
+        "A37",
+        "A04",
+        "A18"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "crates/core/src/models.rs",
+        "crates/core/src/lib.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Preserve provider syncData and supportedSyncNames/getLoadUrl capability. Define MediaIdentity metadata-ID map and matching confidence/provenance; never equate titles by display string alone.",
+        "Expose metadata providers through the existing worker when library support permits, or add a clearly separated adapter. Start with supplied provider IDs, then explicit user-selected search matches; add TMDB/cross-TMDB/Trakt/MyDramaList only as each source is supported.",
+        "Merge optional posters/cast/recommendations/airing/filler data without replacing provider episode payloads or source identity. Respect Kitsu poster/filler/trailer toggles; cache by service ID/locale and preserve original provenance. Trackers can correct a match manually.",
+        "Provide metadata-to-source lookup via getLoadUrl or real provider search and user selection; never synthesize source URLs from metadata IDs."
+      ],
+      "acceptance": [
+        "Same title/remake/year mismatch does not auto-link; manual correction survives restart.",
+        "Missing metadata/API outage leaves core browsing playable; source opaque data is unchanged by enrichment."
+      ],
+      "validation": [
+        "Ambiguous/remake/anime/movie fixtures, metadata provenance merge tests and matched-source search UI test."
+      ]
+    },
+    {
+      "id": "T25",
+      "title": "Desktop backup/export and Android backup import",
+      "priority": "P1",
+      "dependsOn": [
+        "T01",
+        "T02",
+        "T10",
+        "T11"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A20",
+        "A17",
+        "A26"
+      ],
+      "desktopTargets": [
+        "crates/core/src/store.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Create a versioned desktop backup format for profiles/library/watched/progress/settings/repo references, with selective export/import, schema version, source revision and checksum. Export a consistent database snapshot; exclude runtime paths/caches/plain secrets by default.",
+        "Add an Android adapter for BackupFile {datastore,settings}, each with _Bool/_Int/_String/_Float/_Long/_StringSet maps. Parse nested JSON strings according to DataStoreHelper and account key namespaces. Android numeric hash IDs are not Linux IDs: reconcile provider names+URLs/repository evidence and retain unresolved items.",
+        "Map watch statuses/profiles/history/settings explicitly, handle old keys and units, and present an import preview with counts/unmatched entries/conflict policy. Select import settings vs user data; validate size/type before touching DB, then apply a transaction with rollback and a pre-import backup.",
+        "Do not import Android filesystem paths, APK installer/permissions or silently install plugins/tokens. Keep unresolved provider references for later matching. Export Android-compatible format only if a tested reverse mapping is implemented; desktop export alone does not imply Android round-trip support."
+      ],
+      "acceptance": [
+        "Fixture Android backup imports statuses/profiles/progress with no ID collisions or token-based duplicates; unresolved sources remain reviewable.",
+        "Corrupt/newer backup fails before mutation, re-import follows chosen dedup policy, and restore failure rolls back all changes."
+      ],
+      "validation": [
+        "Synthetic Android old/new fixtures without private data, desktop export→restore round-trip, migration rollback and import-preview UI tests."
+      ]
+    },
+    {
+      "id": "T26",
+      "title": "Scheduled backups and retention",
+      "priority": "P2",
+      "dependsOn": [
+        "T25"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A20",
+        "A31"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "crates/core/src/store.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add backup destination/frequency/retention preferences with actual scheduler behavior. Start with app-running schedule and startup catch-up; closed-app operation is an opt-in user service rather than a hidden promise.",
+        "Use temporary output and atomic rename, test destination writeability, enforce bounded retention for app-owned backup names and expose last success/failure. Never delete unrelated files in the chosen directory.",
+        "Handle missed timers, concurrent manual/scheduled export and low disk space. Preserve secrets exclusion and snapshot consistency from T25."
+      ],
+      "acceptance": [
+        "Fake clock triggers one backup per interval; restart catches up without an export loop.",
+        "Retention deletes only eligible owned backups after a new valid backup succeeds; unwritable destination does not damage previous backups."
+      ],
+      "validation": [
+        "Fake-clock/export/retention filesystem fixtures; settings and failure-display UI test."
+      ]
+    },
+    {
+      "id": "T27",
+      "title": "Linux entry points, media integration and external actions",
+      "priority": "P2",
+      "dependsOn": [
+        "T14"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A01",
+        "A32",
+        "A36"
+      ],
+      "desktopTargets": [
+        "src-tauri/tauri.conf.json",
+        "src-tauri/src/main.rs",
+        "src-tauri/capabilities/main.json",
+        "crates/core/src/lib.rs",
+        "crates/core/src/player.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Add validated OS deep links/file associations and single-instance routing for repository, search, title-share, player and resume actions. Derive parsing from MainActivity/AccountManager/IntentHelpers, not from scheme names alone. Queue entry actions until storage and worker are ready.",
+        "Add native file/URL entry, clipboard/copy, source website and preferred player selection. Map Android player packages to detected Linux mpv/VLC/custom executable choices and preserve supported headers/subtitle/position semantics. Use argv arrays, never shell interpolation of media or extension data.",
+        "Implement MPRIS/D-Bus metadata/play/pause/seek/next controls, compositor sleep inhibition while playing, audio-focus policy and opt-in notifications. Integrate real player events; avoid conflicting duplicate mpv MPRIS ownership.",
+        "Desktop TV/remote mode may retain keyboard focus and optional clock; Android TV channels, battery exemptions, scoped-storage permissions, cast SDK services and APK installation do not transfer to Linux. Document the chosen Linux lifetime when background work is added."
+      ],
+      "acceptance": [
+        "Cold-start and running-app links select the correct source/profile and malformed links produce useful errors without accidental install/play.",
+        "Hardware controls change current session; source filenames/URLs containing quotes cannot execute a command. File associations and single-instance behavior work in a packaged Linux smoke test."
+      ],
+      "validation": [
+        "Deep-link parser fixtures, argv tests, mocked D-Bus/portal tests and packaged .desktop manual smoke."
+      ]
+    },
+    {
+      "id": "T28",
+      "title": "Casting: FCast first, Chromecast separately",
+      "priority": "P3",
+      "dependsOn": [
+        "T03",
+        "T14",
+        "T15",
+        "T19",
+        "T27"
+      ],
+      "complexity": "High / specialist",
+      "androidSources": [
+        "A33",
+        "A09",
+        "A32"
+      ],
+      "desktopTargets": [
+        "crates/core/src/lib.rs",
+        "crates/core/src/models.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Implement a cast-backend interface with discovery/device/session/queue/track/control/error capabilities. Start with FCast using the existing protocol source as evidence; add Chromecast as a separate implementation using a supported maintained receiver protocol/library.",
+        "Cast receiver fetches media independently: expose a LAN-reachable opt-in relay with scoped unpredictable resource tokens, per-session lifetime and supported media/subtitle formats. The loopback-only transport in T19 cannot simply be reused unchanged. Preserve authentication context without leaking cookies to the receiver.",
+        "Transfer queue/progress, remote pause/seek/volume/next, reconnect/disconnect and cast subtitle style preferences. Gate UI on provider.hasChromecastSupport and actual receiver support. Do not label generic screen mirroring as equivalent."
+      ],
+      "acceptance": [
+        "A real device plays a supported authenticated fixture via scoped relay, reports position and disconnects cleanly.",
+        "Device disappearance and blocked LAN discovery are recoverable; sessions revoke relay access on end, and unsupported formats get explicit errors."
+      ],
+      "validation": [
+        "Protocol packet fixtures and fake receiver; real FCast/Chromecast device smoke separately recorded."
+      ]
+    },
+    {
+      "id": "T29",
+      "title": "Live, torrents and DRM: separate optional backends",
+      "priority": "P3",
+      "dependsOn": [
+        "T03",
+        "T14",
+        "T19"
+      ],
+      "complexity": "High / specialist",
+      "androidSources": [
+        "A05",
+        "A06",
+        "A08",
+        "A34"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "crates/core/src/models.rs",
+        "crates/core/src/player.rs",
+        "src-tauri/src/main.rs",
+        "src/App.svelte"
+      ],
+      "steps": [
+        "Split this package into independent Live, Torrent and DRM patches. First preserve typed stream metadata and report the missing capability rather than attempting ordinary mpv playback.",
+        "Live: distinguish infinite/unknown duration, live edge and DVR seek window; disable VOD completion/autoplay assumptions and handle reconnect/channel metadata.",
+        "Torrent: add an optional libtorrent-compatible engine or external torrent integration, explicit session start/stop/storage/progress and magnet/file support. Test with an openly licensed local torrent fixture; close sessions and remove only selected temporary assets.",
+        "DRM: determine lawful supported runtime/decoder/CDM and license acquisition per DRM type. mpv does not provide Android Media3 DRM equivalence automatically. A real Android backend or licensed supported desktop playback stack may be needed. Preserve license configuration securely and leave unsupported systems explicitly disabled; do not claim generic Widevine support."
+      ],
+      "acceptance": [
+        "Each backend has its own capability flag, tests and optional dependency detection; a working live stream does not imply torrent or DRM support.",
+        "Live does not become watched-complete at the edge; torrent cleanup is bounded; DRM only marked supported after a real authorized encrypted fixture succeeds."
+      ],
+      "validation": [
+        "Local live playlist/DVR fixture, local lawful torrent swarm, authorized DRM test stream only for actually supported scheme."
+      ]
+    },
+    {
+      "id": "T30",
+      "title": "Settings UI, appearance and desktop accessibility parity",
+      "priority": "P1",
+      "dependsOn": [
+        "T01",
+        "T03"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A26",
+        "A27",
+        "A28",
+        "A29",
+        "A30",
+        "A31",
+        "A36"
+      ],
+      "desktopTargets": [
+        "src/App.svelte",
+        "src/style.css",
+        "src/lib/MediaCard.svelte",
+        "src/lib/Spotlight.svelte",
+        "src-tauri/src/main.rs"
+      ],
+      "steps": [
+        "Build searchable settings sections for General, Appearance, Player, Subtitles, Providers, Accounts, Updates/Backup and Diagnostics. Each option must call an implemented settings consumer; hide/defer unsupported controls with clear capability text.",
+        "Keep the approved desktop design as default. Add accent/theme choices, adjustable poster size/title placement/badge visibility, search view choices and content display toggles. Preserve full media types including Live/Cartoon/OVA/AsianDrama/Documentary/Audio etc as data; never silently cast unknown to Movie.",
+        "Adapt TV/emulator/phone layout settings into responsive desktop/compact/optional remote navigation. Add predictable focus, keyboard shortcuts, tooltips, readable contrast, reduced-motion support and virtualized lists for large catalogs. Confirm-exit should consider active downloads/playback.",
+        "Add project/support/legal links with actual destinations and license notices. Banana/Monke easter egg is an optional cosmetic subtask; do not prioritize it over missing functional behavior."
+      ],
+      "acceptance": [
+        "Existing density/layout flows remain usable. Settings survive restart and unsupported toggles cannot give false success.",
+        "Desktop and narrow layouts pass existing accessibility tests, keyboard can reach every actionable control and long translated strings fit."
+      ],
+      "validation": [
+        "Existing 10 browser tests, focused settings persistence tests and npm run check; manual keyboard/large-library smoke."
+      ]
+    },
+    {
+      "id": "T31",
+      "title": "Localization and first-run setup",
+      "priority": "P2",
+      "dependsOn": [
+        "T01",
+        "T06",
+        "T30"
+      ],
+      "complexity": "Medium",
+      "androidSources": [
+        "A35",
+        "A27"
+      ],
+      "desktopTargets": [
+        "src/App.svelte",
+        "src/lib/types.ts",
+        "src/style.css",
+        "src-tauri/src/main.rs"
+      ],
+      "steps": [
+        "Introduce frontend i18n keys and locale-aware date/number/plural formatting. Port reusable Android translations carefully with attribution; do not assume Android resource placeholders/plurals map directly to the frontend system.",
+        "Add first-run flow for interface language, provider languages, media preferences, desktop layout and explicit repository/extension selection. Persist completion and allow redo without clearing data.",
+        "Include language fallback, RTL direction/layout checks and keyboard navigation. Preserve explicit extension install consent and do not revive auto-download-all behavior from old XML settings."
+      ],
+      "acceptance": [
+        "English/fallback and an RTL locale render correctly; switching locale preserves browsing state/settings.",
+        "Skipping setup leaves a useful honest empty state; redo does not delete repos/library or install unselected packages."
+      ],
+      "validation": [
+        "Locale fallback/plural fixtures, RTL/narrow-layout UI tests and setup restart/redo test."
+      ]
+    },
+    {
+      "id": "T32",
+      "title": "Diagnostics, app updates and release readiness",
+      "priority": "P2",
+      "dependsOn": [
+        "T05",
+        "T07",
+        "T30"
+      ],
+      "complexity": "High",
+      "androidSources": [
+        "A31",
+        "A38"
+      ],
+      "desktopTargets": [
+        "src-tauri/tauri.conf.json",
+        "src-tauri/src/main.rs",
+        "crates/core/src/worker.rs",
+        "scripts/build-worker.sh",
+        "README.md",
+        "NOTICE.md"
+      ],
+      "steps": [
+        "Add bounded log/event collection with a diagnostics view/export: app/worker/runtime versions, package hashes, capability failures and request durations. Redact tokens/cookies/auth headers/PINs/media query secrets; logcat becomes native application diagnostics.",
+        "Add update availability/channel/skip checks from the desktop project's own configured release channel; do not install Android APK releases. Distinguish distro package-manager updates from a signed supported updater flow. Require configured verification/signing before automatic install.",
+        "Validate portable and .deb on clean supported Linux machines with missing mpv/runtime/system libraries, correct resource discovery, X11/Wayland, offline start and upgrade preserving user data. AppImage and alternate architectures remain separate targets until tested.",
+        "Produce release dependency/license inventory including upstream library, shims, dex2jar, Java runtime and frontend fonts/assets. Preserve AI policy disclosure for any upstream contribution; no PR/publish is part of this task by default."
+      ],
+      "acceptance": [
+        "Diagnostics export contains useful failures but no fixture secret; bounded log storage cannot fill disk.",
+        "Update UI never calls an Android installer or installs unsigned artifacts. Clean-machine reports distinguish tested distributions/architectures from untested ones."
+      ],
+      "validation": [
+        "Redaction fixtures, fake update feed/signature errors, clean-machine package checklist and version-1 data upgrade smoke."
+      ]
+    },
+    {
+      "id": "T33",
+      "title": "Advanced original-CS3 Android compatibility backend",
+      "priority": "P3",
+      "dependsOn": [
+        "T04",
+        "T05",
+        "T19"
+      ],
+      "complexity": "Very high / specialist",
+      "androidSources": [
+        "A21",
+        "A22",
+        "A24",
+        "A25",
+        "A32"
+      ],
+      "desktopTargets": [
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/LegacyDex.kt",
+        "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+        "protocol/README.md",
+        "crates/core/src/worker.rs",
+        "src-tauri/src/main.rs"
+      ],
+      "steps": [
+        "First build a compatibility corpus and classify Android dependencies by exact API usage: inert data helpers, resources/assets, WebView/network, plugin settings/actions and full Android app services. This task is several milestones, not one large stub patch.",
+        "For a narrow pure helper API, implement behavior-accurate shim plus unchanged DEX fixture; reject unsupported calls. Do not add a fake Context whose methods silently return null to make loading appear successful. Preserve working DEX/JAR path as the default.",
+        "For real resources/UI/WebView/app-class dependencies, design a separate Android host (for example opt-in Waydroid) compiled with the pinned compatible app APIs. Host shared providers/extractors there and expose a versioned authenticated local transport using the same logical protocol; include install/lifecycle/data-directory ownership and capability negotiation.",
+        "WebView support must cover request interception/redirects, headers/cookies, JS callbacks, cancellation and proper origin/session isolation. Android openSettings/actions need real hosted UI or explicit unsupported behavior; a Rust form cannot execute an arbitrary Android View.",
+        "Prove unchanged representative plugins work end-to-end and define cross-runtime extractor dependencies before marking a class of plugins compatible. Waydroid is a candidate requiring environment support, not a promised automatic solution."
+      ],
+      "acceptance": [
+        "Representative resource, WebView and UI plugin fixtures run unchanged in the selected backend; absent Android host yields explicit capability error.",
+        "JAR/data-only CS3 regressions remain green, backend crashes recover and authentication transport is not a public service. No universal compatibility claim from a single package."
+      ],
+      "validation": [
+        "Dependency-class fixture corpus, isolated Android-host integration and real browser challenge fixture where lawful/reproducible; specialist architecture review."
+      ]
+    }
+  ],
+  "sources": {
+    "A01": {
+      "title": "Active navigation and Android entry points",
+      "paths": [
+        "app/src/main/res/navigation/mobile_navigation.xml",
+        "app/src/main/AndroidManifest.xml",
+        "app/src/main/java/com/lagradost/cloudstream3/MainActivity.kt"
+      ]
+    },
+    "A02": {
+      "title": "Home",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/home/HomeViewModel.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/home/HomeFragment.kt"
+      ]
+    },
+    "A03": {
+      "title": "Search",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/search/SearchViewModel.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/search/SearchFragment.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/search/SearchSuggestionApi.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/quicksearch/QuickSearchFragment.kt"
+      ]
+    },
+    "A04": {
+      "title": "Title details and episode behavior",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/result/ResultViewModel2.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/result/ResultFragmentPhone.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/result/EpisodeAdapter.kt"
+      ]
+    },
+    "A05": {
+      "title": "Provider API and media models",
+      "paths": [
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/MainAPI.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/APIRepository.kt"
+      ]
+    },
+    "A06": {
+      "title": "Stream, audio, playlist and DRM models",
+      "paths": [
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/utils/ExtractorApi.kt"
+      ]
+    },
+    "A07": {
+      "title": "Player orchestration",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/GeneratorPlayer.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/PlayerGeneratorViewModel.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/FullScreenPlayer.kt"
+      ]
+    },
+    "A08": {
+      "title": "Player implementation",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/CS3IPlayer.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/IPlayer.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/PreviewGenerator.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/DynamicRangeCompressor.kt"
+      ]
+    },
+    "A09": {
+      "title": "Subtitle preferences and rendering",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/subtitles/SubtitlesScreen.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/PlayerSubtitleHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/subtitles/ChromecastSubtitlesScreen.kt"
+      ]
+    },
+    "A10": {
+      "title": "Source and quality preferences",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/source_priority/QualityDataHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/source_priority/QualityProfileDialog.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/source_priority/SourcePriorityDialog.kt"
+      ]
+    },
+    "A11": {
+      "title": "Skip intro/outro integrations",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/utils/videoskip/SkipAPI.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/videoskip/AniSkip.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/videoskip/AnimeSkip.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/videoskip/IntroDbSkip.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/videoskip/TheIntroDBSkip.kt"
+      ]
+    },
+    "A12": {
+      "title": "Downloads engine",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/utils/downloader/DownloadManager.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/downloader/DownloadFileManagement.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/downloader/DownloadObjects.kt"
+      ]
+    },
+    "A13": {
+      "title": "Downloads queue and interface",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/utils/downloader/DownloadQueueManager.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/download/DownloadFragment.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/download/queue/DownloadQueueFragment.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/download/DownloadChildFragment.kt"
+      ]
+    },
+    "A14": {
+      "title": "Offline playback",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/OfflinePlaybackHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/DownloadFileGenerator.kt"
+      ]
+    },
+    "A15": {
+      "title": "Library and watch statuses",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/library/LibraryViewModel.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/LocalList.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/WatchType.kt"
+      ]
+    },
+    "A16": {
+      "title": "Profiles and locks",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/account/AccountScreen.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/account/AccountViewModel2.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/account/AccountSelectActivity2.kt"
+      ]
+    },
+    "A17": {
+      "title": "Persistent Android user data",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/utils/DataStoreHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/DataStore.kt"
+      ]
+    },
+    "A18": {
+      "title": "Tracking and subtitle accounts",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/AccountManager.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/SyncAPI.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/SubtitleAPI.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/result/SyncViewModel.kt"
+      ]
+    },
+    "A19": {
+      "title": "Subscriptions",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/services/SubscriptionWorkManager.kt"
+      ]
+    },
+    "A20": {
+      "title": "Backups",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/utils/BackupUtils.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/services/BackupWorkManager.kt"
+      ]
+    },
+    "A21": {
+      "title": "Plugin loading and repositories",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/plugins/PluginManager.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/plugins/RepositoryManager.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/plugins/Plugin.kt",
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/plugins/BasePlugin.kt"
+      ]
+    },
+    "A22": {
+      "title": "Extension interface",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/extensions/ExtensionsScreen.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/extensions/PluginsViewModel.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/extensions/PluginDetailsFragment.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/plugins/VotingApi.kt",
+        "shared/src/commonMain/kotlin/com/lagradost/cloudstream4/viewmodels/ExtensionsViewModel2.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/extensions/AndroidRepositoryManager.kt"
+      ]
+    },
+    "A23": {
+      "title": "Provider self tests",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/testing/TestViewModel2.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/testing/TestScreen.kt"
+      ]
+    },
+    "A24": {
+      "title": "Network helpers",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/network/CloudflareKiller.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/network/DdosGuardKiller.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/network/DohProviders.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/network/RequestsHelper.kt"
+      ]
+    },
+    "A25": {
+      "title": "WebView resolver platform gap",
+      "paths": [
+        "library/src/androidMain/kotlin/com/lagradost/cloudstream3/network/WebViewResolver.android.kt",
+        "library/src/jvmMain/kotlin/com/lagradost/cloudstream3/network/WebViewResolver.jvm.kt",
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/network/WebViewResolver.kt"
+      ]
+    },
+    "A26": {
+      "title": "Current shared preferences",
+      "paths": [
+        "shared/src/commonMain/kotlin/com/lagradost/cloudstream4/DevicePreferenceStore.kt"
+      ]
+    },
+    "A27": {
+      "title": "Current general and provider settings",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/SettingsGeneralScreen.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/SettingsProvidersScreen.kt"
+      ]
+    },
+    "A28": {
+      "title": "Current appearance settings",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/SettingsUIScreen.kt"
+      ]
+    },
+    "A29": {
+      "title": "Current player settings",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/SettingsPlayerScreen.kt"
+      ]
+    },
+    "A30": {
+      "title": "Current account settings",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/SettingsAccountScreen.kt"
+      ]
+    },
+    "A31": {
+      "title": "Updates and diagnostics",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/SettingsUpdatesScreen.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/ApkUpdater.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/settings/logcat/LogcatDialog.kt"
+      ]
+    },
+    "A32": {
+      "title": "External actions",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/actions/VideoClickAction.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/actions/temp/CopyClipboardAction.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/actions/temp/PlayInBrowserAction.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/actions/temp/ViewM3U8Action.kt"
+      ]
+    },
+    "A33": {
+      "title": "Casting",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/utils/CastHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/CastOptionsProvider.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/actions/temp/fcast/FcastAction.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/actions/temp/fcast/FcastManager.kt"
+      ]
+    },
+    "A34": {
+      "title": "Live and torrents",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/live/LiveManager.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/live/LiveHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/Torrent.kt"
+      ]
+    },
+    "A35": {
+      "title": "Setup",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/setup/SetupFragmentLanguage.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/setup/SetupFragmentProviderLanguage.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/setup/SetupFragmentMedia.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/setup/SetupFragmentLayout.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/setup/SetupFragmentExtensions.kt"
+      ]
+    },
+    "A36": {
+      "title": "Platform adaptations",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/PlayerPipHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/ui/player/PlayerGestureHelper.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/TvChannelUtils.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/utils/BiometricAuthenticator.kt"
+      ]
+    },
+    "A37": {
+      "title": "Metadata providers",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/utils/FillerEpisodeCheck.kt",
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/metaproviders/TmdbProvider.kt",
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/metaproviders/CrossTmdbProvider.kt",
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/metaproviders/TraktProvider.kt",
+        "library/src/commonMain/kotlin/com/lagradost/cloudstream3/metaproviders/MyDramaList.kt"
+      ]
+    },
+    "A38": {
+      "title": "Upstream contribution and license rules",
+      "paths": [
+        "AI-POLICY.md",
+        "LICENSE"
+      ]
+    },
+    "A39": {
+      "title": "Tracking service implementations",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/AniListApi.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/MALApi.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/KitsuApi.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/SimklApi.kt"
+      ]
+    },
+    "A40": {
+      "title": "Subtitle service implementations",
+      "paths": [
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/OpenSubtitlesApi.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/Addic7ed.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/Subdl.kt",
+        "app/src/main/java/com/lagradost/cloudstream3/syncproviders/providers/SubSource.kt"
+      ]
+    }
+  },
+  "currentSharedPreferences": [
+    {
+      "group": "PluginPreferences",
+      "property": "autoUpdate",
+      "type": "getBoolean",
+      "key": "auto_update_plugins",
+      "default": "true"
+    },
+    {
+      "group": "PluginPreferences",
+      "property": "autoDownload",
+      "type": "getInt",
+      "key": "auto_download_plugins_key2",
+      "default": "0"
+    },
+    {
+      "group": "BackupPreferences",
+      "property": "frequency",
+      "type": "getInt",
+      "key": "automatic_backup_key",
+      "default": "0"
+    },
+    {
+      "group": "BackupPreferences",
+      "property": "path",
+      "type": "getString",
+      "key": "backup_path_key",
+      "default": "(store default)"
+    },
+    {
+      "group": "BackupPreferences",
+      "property": "visualPath",
+      "type": "getString",
+      "key": "backup_dir_key",
+      "default": "(store default)"
+    },
+    {
+      "group": "UpdatePreferences",
+      "property": "apkInstaller",
+      "type": "getInt",
+      "key": "apk_installer_key",
+      "default": "1"
+    },
+    {
+      "group": "UpdatePreferences",
+      "property": "showAppUpdates",
+      "type": "getBoolean",
+      "key": "auto_update",
+      "default": "true"
+    },
+    {
+      "group": "UpdatePreferences",
+      "property": "skipUpdate",
+      "type": "getString",
+      "key": "skip_update_key",
+      "default": "\"\""
+    },
+    {
+      "group": "SecurityPreferences",
+      "property": "biometrics",
+      "type": "getBoolean",
+      "key": "biometric_key",
+      "default": "false"
+    },
+    {
+      "group": "SecurityPreferences",
+      "property": "skipAccountSelection",
+      "type": "getBoolean",
+      "key": "skip_startup_account_select_key",
+      "default": "false"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "primaryColor",
+      "type": "getString",
+      "key": "primary_color_key",
+      "default": "\"Normal\""
+    },
+    {
+      "group": "UIPreferences",
+      "property": "theme",
+      "type": "getString",
+      "key": "app_theme_key",
+      "default": "\"AmoledLight\""
+    },
+    {
+      "group": "UIPreferences",
+      "property": "layout",
+      "type": "getInt",
+      "key": "app_layout_key",
+      "default": "-1"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "bottomTitle",
+      "type": "getBoolean",
+      "key": "bottom_title_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "advancedSearch",
+      "type": "getBoolean",
+      "key": "advanced_search",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "searchSuggestions",
+      "type": "getBoolean",
+      "key": "search_suggestions_enabled",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "kitsuPostersEnabled",
+      "type": "getBoolean",
+      "key": "show_kitsu_posters_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "trailersEnabled",
+      "type": "getBoolean",
+      "key": "show_trailers_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "castEnabled",
+      "type": "getBoolean",
+      "key": "show_cast_in_details_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "fillersEnabled",
+      "type": "getBoolean",
+      "key": "show_fillers_key",
+      "default": "false"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "showMetadataOverlay",
+      "type": "getBoolean",
+      "key": "show_player_metadata_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "overscanDp",
+      "type": "getInt",
+      "key": "overscan_key",
+      "default": "0"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "posterSize",
+      "type": "getInt",
+      "key": "poster_size_key",
+      "default": "0"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "posterShowHd",
+      "type": "getBoolean",
+      "key": "show_hd_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "posterShowDub",
+      "type": "getBoolean",
+      "key": "show_dub_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "posterShowSub",
+      "type": "getBoolean",
+      "key": "show_sub_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "posterShowRating",
+      "type": "getBoolean",
+      "key": "show_rating_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "posterShowTitle",
+      "type": "getBoolean",
+      "key": "show_title_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "posterShowEpisode",
+      "type": "getBoolean",
+      "key": "show_episode_text_key",
+      "default": "true"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "showClock",
+      "type": "getBoolean",
+      "key": "tv_layout_clock_key",
+      "default": "false"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "randomButtonEnabled",
+      "type": "getBoolean",
+      "key": "random_button_key",
+      "default": "false"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "confirmExit",
+      "type": "getInt",
+      "key": "confirm_exit_key",
+      "default": "-1"
+    },
+    {
+      "group": "UIPreferences",
+      "property": "filterQuality",
+      "type": "getEnumSet",
+      "key": "pref_filter_search_quality_key2",
+      "default": "emptySet()"
+    },
+    {
+      "group": "ProviderPreferences",
+      "property": "preferredMedia",
+      "type": "getStringSet",
+      "key": "prefer_media_type_key_2",
+      "default": "defaultPreferredMedia"
+    },
+    {
+      "group": "ProviderPreferences",
+      "property": "extensionLanguages",
+      "type": "getStringSet",
+      "key": "provider_lang_key",
+      "default": "setOf(AllLanguagesName)"
+    },
+    {
+      "group": "ProviderPreferences",
+      "property": "displayDubSub",
+      "type": "getStringSet",
+      "key": "display_sub_key",
+      "default": "defaultDub"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "episodeSync",
+      "type": "getBoolean",
+      "key": "episode_sync_enabled_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "defaultPlayer",
+      "type": "getString",
+      "key": "player_default_key",
+      "default": "\"\""
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "limitPlayerTitle",
+      "type": "getInt",
+      "key": "prefer_limit_title_key",
+      "default": "0"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "hidePlayerControlNames",
+      "type": "getBoolean",
+      "key": "hide_player_control_names_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "showName",
+      "type": "getBoolean",
+      "key": "show_name",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "showResolution",
+      "type": "getBoolean",
+      "key": "show_resolution",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "showMediaInfo",
+      "type": "getBoolean",
+      "key": "show_media_info",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "pipEnabled",
+      "type": "getBoolean",
+      "key": "pip_enabled_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "resizeEnabled",
+      "type": "getBoolean",
+      "key": "player_resize_enabled_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "speedEnabled",
+      "type": "getBoolean",
+      "key": "playback_speed_enabled_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "compressorEnabled",
+      "type": "getBoolean",
+      "key": "compressor_enabled_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "tiktokEnabled",
+      "type": "getBoolean",
+      "key": "speedup_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "autoPlayEnabled",
+      "type": "getBoolean",
+      "key": "autoplay_next_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "startPaused",
+      "type": "getBoolean",
+      "key": "start_paused_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "skipOpEnabled",
+      "type": "getBoolean",
+      "key": "enable_skip_op_from_database",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "autoRotateEnabled",
+      "type": "getBoolean",
+      "key": "auto_rotate_video_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "rotateButtonEnabled",
+      "type": "getBoolean",
+      "key": "rotate_video_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "previewBarEnabled",
+      "type": "getBoolean",
+      "key": "preview_seekbar_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "softwareDecoding",
+      "type": "getInt",
+      "key": "software_decoding_key2",
+      "default": "-1"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "extraBrightnessEnabled",
+      "type": "getBoolean",
+      "key": "extra_brightness_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "swipeHorizontalEnabled",
+      "type": "getBoolean",
+      "key": "swipe_enabled_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "swipeVerticalEnabled",
+      "type": "getBoolean",
+      "key": "swipe_vertical_enabled_key",
+      "default": "true"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "doubleTapToSeekEnabled",
+      "type": "getBoolean",
+      "key": "double_tap_enabled_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "doubleTapToPauseEnabled",
+      "type": "getBoolean",
+      "key": "double_tap_pause_enabled_key",
+      "default": "false"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "doubleTapTime",
+      "type": "getInt",
+      "key": "double_tap_seek_time_key2",
+      "default": "10"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "bufferDiskMB",
+      "type": "getInt",
+      "key": "video_buffer_disk_key",
+      "default": "0"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "bufferRamMB",
+      "type": "getInt",
+      "key": "video_buffer_size_key",
+      "default": "0"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "bufferTimeSec",
+      "type": "getInt",
+      "key": "video_buffer_length_key",
+      "default": "0"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "tvSeekOnTime",
+      "type": "getInt",
+      "key": "android_tv_interface_on_seek_key",
+      "default": "10"
+    },
+    {
+      "group": "PlayerPreferences",
+      "property": "tvSeekOffTime",
+      "type": "getInt",
+      "key": "android_tv_interface_off_seek_key",
+      "default": "10"
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "locale",
+      "type": "getString",
+      "key": "app_locale",
+      "default": "\"\""
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "bananas",
+      "type": "getInt",
+      "key": "benene_count",
+      "default": "0"
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "parallelDownloads",
+      "type": "getInt",
+      "key": "download_parallel_key",
+      "default": "3"
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "concurrentConnections",
+      "type": "getInt",
+      "key": "download_concurrent_key",
+      "default": "3"
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "batterOptimization",
+      "type": "getBoolean",
+      "key": "battery_optimisation_key",
+      "default": "false"
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "dns",
+      "type": "getInt",
+      "key": "dns_key",
+      "default": "0"
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "jsdelivrProxy",
+      "type": "getBoolean",
+      "key": "jsdelivr_proxy_key",
+      "default": "false"
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "downloadPath",
+      "type": "getString",
+      "key": "download_path_key",
+      "default": "\"\""
+    },
+    {
+      "group": "GeneralPreferences",
+      "property": "downloadPathVisual",
+      "type": "getString",
+      "key": "download_path_key_visual",
+      "default": "\"\""
+    }
+  ],
+  "legacyXmlPreferences": [
+    {
+      "file": "app/src/main/res/xml/settings_account.xml",
+      "preferences": [
+        {
+          "kind": "Preference",
+          "key": "mal_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "kitsu_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "anilist_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "simkl_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "opensubtitles_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "subdl_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "animeskip_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "false",
+          "key": "skip_startup_account_select_key",
+          "title": "Skip account selection at startup"
+        },
+        {
+          "kind": "PreferenceCategory",
+          "title": "Security",
+          "key": "pref_category_security_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "key": "biometric_key",
+          "defaultValue": "false",
+          "summary": "Unlock the app with Fingerprint, Face ID, PIN, Pattern and Password.",
+          "title": "Lock with Biometrics"
+        }
+      ]
+    },
+    {
+      "file": "app/src/main/res/xml/settings_general.xml",
+      "preferences": [
+        {
+          "kind": "Preference",
+          "key": "app_locale",
+          "title": "App Language"
+        },
+        {
+          "kind": "Preference",
+          "key": "legal_notice_key",
+          "title": "Disclaimer"
+        },
+        {
+          "kind": "Preference",
+          "key": "benene_count",
+          "title": "Give a benene to the devs",
+          "summary": "Given benene"
+        },
+        {
+          "kind": "Preference",
+          "key": "download_path_key",
+          "title": "Download path"
+        },
+        {
+          "kind": "SeekBarPreference",
+          "defaultValue": "3",
+          "key": "download_parallel_key",
+          "summary": "How many different items that can be downloaded in parallel",
+          "title": "Parallel downloads"
+        },
+        {
+          "kind": "SeekBarPreference",
+          "defaultValue": "3",
+          "key": "download_concurrent_key",
+          "summary": "How many concurrent connections each download can use while downloading",
+          "title": "Concurrent connections"
+        },
+        {
+          "kind": "Preference",
+          "key": "battery_optimisation",
+          "title": "Disable Battery optimization"
+        },
+        {
+          "kind": "Preference",
+          "key": "override_site_key",
+          "summary": "Add a clone of an existing site, with a different URL",
+          "title": "Clone site"
+        },
+        {
+          "kind": "Preference",
+          "key": "dns_key",
+          "summary": "Useful for bypassing ISP blocks",
+          "title": "DNS over HTTPS"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "false",
+          "key": "jsdelivr_proxy_key",
+          "summary": "Bypass blocking of raw github URLs using jsDelivr. May cause updates to be delayed by few days.",
+          "title": "GitHub Proxy"
+        }
+      ]
+    },
+    {
+      "file": "app/src/main/res/xml/settings_player.xml",
+      "preferences": [
+        {
+          "kind": "SwitchPreference",
+          "summary": "Automatically sync your current episode progress",
+          "title": "Update watch progress",
+          "defaultValue": "true",
+          "key": "episode_sync_enabled_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "player_default_key",
+          "title": "Preferred video player"
+        },
+        {
+          "kind": "Preference",
+          "key": "prefer_limit_title_key",
+          "title": "Video player title max chars"
+        },
+        {
+          "kind": "Preference",
+          "key": "prefer_limit_show_player_info",
+          "title": "Show player information"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "false",
+          "key": "hide_player_control_names_key",
+          "title": "Hide names of the player\\'s controls"
+        },
+        {
+          "kind": "Preference",
+          "key": "subtitle_settings_key",
+          "title": "Subtitles",
+          "summary": "Player subtitles settings"
+        },
+        {
+          "kind": "Preference",
+          "key": "subtitle_settings_chromecast_key",
+          "title": "Chromecast Subtitles",
+          "summary": "Chromecast subtitles settings"
+        },
+        {
+          "kind": "Preference",
+          "summary": "Decide how video sources should be sorted in the player",
+          "title": "Source priority",
+          "key": "player_source_priority_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Continues playback in a miniature player on top of other apps",
+          "title": "Picture-in-picture",
+          "defaultValue": "true",
+          "key": "pip_enabled_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Remove the black borders",
+          "title": "Player resize button",
+          "defaultValue": "true",
+          "key": "player_resize_enabled_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Adds a speed option in the player",
+          "title": "Playback speed",
+          "defaultValue": "false",
+          "key": "playback_speed_enabled_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Show compressor controls in the player (helps balance loud/quiet audio)",
+          "title": "Dynamic Range Compressor",
+          "defaultValue": "false",
+          "key": "compressor_enabled_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Hold to get 2x speed",
+          "title": "LongPress Speed Toggle",
+          "defaultValue": "false",
+          "key": "speedup_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Start the next episode when the current one ends",
+          "title": "Autoplay next episode",
+          "defaultValue": "true",
+          "key": "autoplay_next_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Show skip popups for opening/ending",
+          "title": "Skip OP",
+          "defaultValue": "true",
+          "key": "enable_skip_op_from_database"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Display a toggle button for screen orientation",
+          "title": "Rotate",
+          "defaultValue": "false",
+          "key": "rotate_video_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Enable automatic switching of screen orientation based on video orientation",
+          "title": "Auto rotate",
+          "defaultValue": "true",
+          "key": "auto_rotate_video_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Enable preview thumbnail on seekbar",
+          "title": "Seekbar preview",
+          "defaultValue": "true",
+          "key": "preview_seekbar_key"
+        },
+        {
+          "kind": "Preference",
+          "summary": "Software decoding enables the player to play video files not supported by your device, but may cause laggy or unstable playback on high resolution.",
+          "title": "Software decoding",
+          "defaultValue": "true",
+          "key": "software_decoding_key2"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Enable brightness filter when 100% display brightness is exceeded",
+          "title": "Extra brightness",
+          "defaultValue": "false",
+          "key": "extra_brightness_enabled"
+        },
+        {
+          "kind": "PreferenceCategory",
+          "title": "Gestures",
+          "key": "pref_category_gestures_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Swipe from side to side to control your position in a video",
+          "title": "Swipe to seek",
+          "defaultValue": "true",
+          "key": "swipe_enabled_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Slide up or down on the left or right side to change brightness or volume",
+          "title": "Swipe to change settings",
+          "defaultValue": "true",
+          "key": "swipe_vertical_enabled_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Tap twice on the right or left side to seek forwards or backwards",
+          "title": "Double tap to seek",
+          "defaultValue": "false",
+          "key": "double_tap_enabled_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Tap twice in the middle to pause",
+          "title": "Double tap to pause",
+          "defaultValue": "false",
+          "key": "double_tap_pause_enabled_key"
+        },
+        {
+          "kind": "SeekBarPreference",
+          "defaultValue": "10",
+          "title": "Player seek amount (Seconds)",
+          "key": "double_tap_seek_time_key2"
+        },
+        {
+          "kind": "Preference",
+          "key": "video_buffer_disk_key",
+          "summary": "Causes problems if set too high on devices with low storage space, such as Android TV.",
+          "title": "Video cache on disk"
+        },
+        {
+          "kind": "Preference",
+          "key": "video_buffer_size_key",
+          "summary": "Causes crashes if set too high on devices with low memory, such as Android TV.",
+          "title": "Video buffer size"
+        },
+        {
+          "kind": "Preference",
+          "key": "video_buffer_length_key",
+          "summary": "Causes crashes if set too high on devices with low memory, such as Android TV.",
+          "title": "Video buffer length"
+        },
+        {
+          "kind": "Preference",
+          "key": "video_buffer_clear_key",
+          "title": "Clear video and image cache"
+        },
+        {
+          "kind": "PreferenceCategory",
+          "key": "pref_category_android_tv_key",
+          "title": "Android TV"
+        },
+        {
+          "kind": "SeekBarPreference",
+          "defaultValue": "30",
+          "summary": "The seek amount used when the player is visible",
+          "title": "Player Shown - Seek Amount",
+          "key": "android_tv_interface_on_seek_key"
+        },
+        {
+          "kind": "SeekBarPreference",
+          "defaultValue": "10",
+          "summary": "The seek amount used when the player is hidden",
+          "title": "Player Hidden - Seek Amount",
+          "key": "android_tv_interface_off_seek_key"
+        }
+      ]
+    },
+    {
+      "file": "app/src/main/res/xml/settings_providers.xml",
+      "preferences": [
+        {
+          "kind": "Preference",
+          "key": "provider_lang_key",
+          "title": "Extension languages"
+        },
+        {
+          "kind": "Preference",
+          "key": "prefer_media_type_key_2",
+          "title": "Preferred media"
+        },
+        {
+          "kind": "Preference",
+          "key": "display_sub_key",
+          "title": "Display Dubbed/Subbed Anime"
+        },
+        {
+          "kind": "SwitchPreference",
+          "key": "enable_nsfw_on_providers_key",
+          "summary": "Restart the app to see changes.",
+          "title": "Enable NSFW on supported Extensions",
+          "defaultValue": "false"
+        },
+        {
+          "kind": "Preference",
+          "key": "test_providers_key",
+          "title": "Test all Extensions",
+          "summary": "This Test is meant for developers only and does not verifies or denies working of any extension."
+        }
+      ]
+    },
+    {
+      "file": "app/src/main/res/xml/settings_ui.xml",
+      "preferences": [
+        {
+          "kind": "Preference",
+          "key": "primary_color_key",
+          "title": "Primary color"
+        },
+        {
+          "kind": "Preference",
+          "key": "app_theme_key",
+          "title": "App theme"
+        },
+        {
+          "kind": "Preference",
+          "key": "app_layout_key",
+          "title": "App Layout"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "true",
+          "key": "bottom_title_key",
+          "summary": "Put the title under the poster",
+          "title": "Poster title location"
+        },
+        {
+          "kind": "SeekBarPreference",
+          "defaultValue": "0",
+          "key": "overscan_key",
+          "summary": "Changes the bounds of the screen",
+          "title": "Overscan"
+        },
+        {
+          "kind": "SeekBarPreference",
+          "defaultValue": "0",
+          "key": "poster_size_key",
+          "summary": "Changes size of posters",
+          "title": "Poster size"
+        },
+        {
+          "kind": "Preference",
+          "key": "poster_ui_key",
+          "title": "Toggle UI elements on poster"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Gives you the search results separated by provider",
+          "title": "Advanced Search",
+          "defaultValue": "true",
+          "key": "advanced_search"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Show search suggestions while typing",
+          "title": "Search Suggestions",
+          "defaultValue": "true",
+          "key": "search_suggestions_enabled"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "true",
+          "key": "show_trailers_key",
+          "title": "Show trailers"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "true",
+          "key": "show_kitsu_posters_key",
+          "title": "Show posters from Kitsu"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "true",
+          "key": "show_cast_in_details_key",
+          "title": "Show cast panel"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "false",
+          "key": "show_fillers_key",
+          "title": "Show filler episode for anime"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "true",
+          "key": "show_player_metadata_key",
+          "title": "Show Player Metadata Overlay"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Show a real time clock at the top of the screen. Applies to the homepage and player",
+          "title": "Show real time clock",
+          "defaultValue": "false",
+          "key": "tv_layout_clock_key"
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Show random button on Homepage and Library",
+          "title": "Random Button",
+          "defaultValue": "false",
+          "key": "random_button_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "confirm_exit_key",
+          "summary": "Show dialog before exiting the app",
+          "title": "Confirm before exiting"
+        },
+        {
+          "kind": "Preference",
+          "key": "pref_filter_search_quality_key",
+          "title": "Hide selected video quality in search results"
+        }
+      ]
+    },
+    {
+      "file": "app/src/main/res/xml/settings_updates.xml",
+      "preferences": [
+        {
+          "kind": "Preference",
+          "title": "Check for Update",
+          "key": "manual_check_update"
+        },
+        {
+          "kind": "Preference",
+          "title": "Install pre-release version",
+          "key": "install_prerelease_key"
+        },
+        {
+          "kind": "Preference",
+          "key": "apk_installer_key",
+          "title": "APK Installer",
+          "summary": "Some devices do not support the new package installer. Try the legacy option if updates do not install."
+        },
+        {
+          "kind": "SwitchPreference",
+          "summary": "Automatically search for new updates after starting the app.",
+          "title": "Show app updates",
+          "defaultValue": "true",
+          "key": "auto_update"
+        },
+        {
+          "kind": "Preference",
+          "key": "backup_key",
+          "title": "Back up data"
+        },
+        {
+          "kind": "Preference",
+          "key": "automatic_backup_key",
+          "title": "Backup frequency"
+        },
+        {
+          "kind": "Preference",
+          "key": "restore_key",
+          "title": "Restore data from backup"
+        },
+        {
+          "kind": "Preference",
+          "key": "backup_path_key",
+          "title": "Backup folder location"
+        },
+        {
+          "kind": "SwitchPreference",
+          "defaultValue": "true",
+          "key": "auto_update_plugins",
+          "title": "Automatic plugin updates"
+        },
+        {
+          "kind": "Preference",
+          "key": "auto_download_plugins_key2",
+          "title": "Automatically download plugins",
+          "summary": "Automatically install all not yet installed plugins from added repositories."
+        },
+        {
+          "kind": "Preference",
+          "key": "manual_update_plugins",
+          "title": "Update Plugins",
+          "summary": "Update plugins manually"
+        },
+        {
+          "kind": "Preference",
+          "key": "show_logcat_key",
+          "title": "Show Logcat 🐈"
+        },
+        {
+          "kind": "Preference",
+          "title": "Redo setup process",
+          "key": "redo_setup_key"
+        }
+      ]
+    }
+  ],
+  "baselineChecks": {
+    "rustCompatibility": "8 passed; native mpv test ignored by default",
+    "svelteCheck": "0 errors, 0 warnings",
+    "otherSuites": "Earlier development passed; not rerun during audit"
+  },
+  "desktopBaselineFiles": [
+    {
+      "path": ".prettierrc.json",
+      "sha256": "2853e46ce35120fe2727d0aaab545113fbe513829e4ac23ff0a77045a51c7900"
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "00108a02967d8b95572e6ba654a47a84d1bf1bbe98a5f0d379a588df4b2e041f"
+    },
+    {
+      "path": "NOTICE.md",
+      "sha256": "f4208333073e0a66ede271f076e4db6e84c1fafe47ca8592f07537dd48a13987"
+    },
+    {
+      "path": "README.md",
+      "sha256": "88f2cf9ccf750db03aa461e5adb8a5a5c1372cc8cfd17391dccc6dacd2787fdb"
+    },
+    {
+      "path": "crates/core/Cargo.toml",
+      "sha256": "2c08ca71a03a1aec417be1067f763287b120e803b270213ec343ef09acd6d058"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "sha256": "1dee6ecf454541137f586eba4a75e19ac3d14a76893146898d4105438492c539"
+    },
+    {
+      "path": "crates/core/src/main.rs",
+      "sha256": "a2613a4fd79275080cafe4d285c6d0aa4da1845c56b8865d5fd7e1a056a847ad"
+    },
+    {
+      "path": "crates/core/src/models.rs",
+      "sha256": "c596c2b5341dfe06540654843d987a30bdf74de5bd2d7830b059b74c2dc99738"
+    },
+    {
+      "path": "crates/core/src/player.rs",
+      "sha256": "8d52a0d9654f0f34e7052751aab26e6b9651019c554de7844c372f69a63d258d"
+    },
+    {
+      "path": "crates/core/src/repository.rs",
+      "sha256": "8a4f7e07d47e305f55d808c0f441a534d41a8e031f58f4c67ac5f1452e281318"
+    },
+    {
+      "path": "crates/core/src/store.rs",
+      "sha256": "50296d0f52f49e510beb29346993c174b6a9544a7bf8bb7fde788ae77e8ff3e8"
+    },
+    {
+      "path": "crates/core/src/worker.rs",
+      "sha256": "4058cf5e17557dfbf2e407de8c30b12a21f12c8651c453afa618e6db805ddbf1"
+    },
+    {
+      "path": "crates/core/tests/compatibility.rs",
+      "sha256": "1301ee99b8869fb85faa3653e94f9b03ebbc363abd3476ee0fe9d4773b2dd9ad"
+    },
+    {
+      "path": "crates/core/tests/player_linux.rs",
+      "sha256": "95943117faf7c3da0731ade257a078b3732fedcb2bfa42552b063a4dddad69b1"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "87ecfdf67617e0b4858291f84c8a4b85cc27154eb22daeb2788961933827bdc4"
+    },
+    {
+      "path": "package.json",
+      "sha256": "89d8954641c1798c05155a96d482a0a24932047041551bbf5e33ccb0d2c92890"
+    },
+    {
+      "path": "playwright.config.ts",
+      "sha256": "4e01a01cb09588d6b2955d157e22bd6035d002d3c32414c7ce9da64bc4259589"
+    },
+    {
+      "path": "protocol/README.md",
+      "sha256": "d6a87946a88990e004d2d544f9c19a9ef73f5dffa765c902b5128c940621ee6e"
+    },
+    {
+      "path": "runtimes/jvm/build.gradle.kts",
+      "sha256": "78b6aa264eb3f678be12d70e3442eca0749ab2a3d4dc2cb357fbcdd3fdb5c87a"
+    },
+    {
+      "path": "runtimes/jvm/sample/build.gradle.kts",
+      "sha256": "c60d31a8436d9b43fc1efa88809db8a25062597be87193073eeeebddb47b106b"
+    },
+    {
+      "path": "runtimes/jvm/sample/src/main/kotlin/dev/cloudstream/sample/SamplePlugin.kt",
+      "sha256": "211e4b9f9ed9dec354dcb1d94d45501a7603b621c860ee75823976a62987d457"
+    },
+    {
+      "path": "runtimes/jvm/settings.gradle.kts",
+      "sha256": "e6b4ea22624eb7d025b6e5af6c1a843f1d4e807e5caec0897cbe3876931124f1"
+    },
+    {
+      "path": "runtimes/jvm/src/main/kotlin/android/content/Context.kt",
+      "sha256": "af99089582303b4ea83e81bf804e5594c7c0d4d9bddce3dcd2be789d0c9afba6"
+    },
+    {
+      "path": "runtimes/jvm/src/main/kotlin/android/util/Log.kt",
+      "sha256": "c3aad7390c2521b09699b0838ef451f58ff54d515a9fe3fd55f7881ebe660257"
+    },
+    {
+      "path": "runtimes/jvm/src/main/kotlin/com/lagradost/cloudstream3/plugins/Plugin.kt",
+      "sha256": "fe0fba75208fdc83d4ad59ee1f45c610d2a2acf47536584bbec8cddc0d40901a"
+    },
+    {
+      "path": "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/LegacyDex.kt",
+      "sha256": "1f854a6c16f0c16d1a91098e44ada05689ab6efc41138e97be362799f5bf9f3d"
+    },
+    {
+      "path": "runtimes/jvm/src/main/kotlin/dev/cloudstream/worker/Main.kt",
+      "sha256": "1bed06a6ba52df53dbc9fe061c5cbf07cb1583c80293d3e5f7758d5b35bd84a8"
+    },
+    {
+      "path": "runtimes/jvm/src/test/kotlin/dev/cloudstream/worker/LegacyDexTest.kt",
+      "sha256": "c8ec1abbfba78ed9bb40bbda245beafe2f2674d9365846d2c30b3c47fe531628"
+    },
+    {
+      "path": "scripts/build-worker.sh",
+      "sha256": "e383cef83278528d54ebdbd86696bd6be5b23eac231b72918291b2b508c6ecc7"
+    },
+    {
+      "path": "scripts/smoke-legacy.py",
+      "sha256": "c841e7dd218a46f3b0847698038af65516532de452bf5e188c89d4c31c6b7950"
+    },
+    {
+      "path": "scripts/smoke-worker.sh",
+      "sha256": "960d536e493584451610ff65b974c6f330b84f3ec0305cfbbb9adc731fe0c463"
+    },
+    {
+      "path": "src-tauri/Cargo.toml",
+      "sha256": "df7adaa33034623a47f19dfea79c8ac78604e498f0333a17e0acf56d17211fe5"
+    },
+    {
+      "path": "src-tauri/build.rs",
+      "sha256": "487059eaf8a947b80f20a9aacac038a5047b2ad69d2401b827376c67d6fe847f"
+    },
+    {
+      "path": "src-tauri/capabilities/main.json",
+      "sha256": "1204e1814beea2b8b6137ce935f4879df7f5b0460199b3bcfd20703666f3fc4e"
+    },
+    {
+      "path": "src-tauri/gen/schemas/acl-manifests.json",
+      "sha256": "bdc3ced2ae416f11b23bc9c9b62341a3a59aa7bb5322f04f197bb08cb610409f"
+    },
+    {
+      "path": "src-tauri/gen/schemas/capabilities.json",
+      "sha256": "e169f070f1650e477aa40f7e3106f796655c3aa3f5a5b9896b403a242dc6187c"
+    },
+    {
+      "path": "src-tauri/gen/schemas/desktop-schema.json",
+      "sha256": "4a946fe48fbb0c7c535ea53e6070bd8276f3f3d74f96efbaa6d85bd7b53b0f05"
+    },
+    {
+      "path": "src-tauri/gen/schemas/linux-schema.json",
+      "sha256": "4a946fe48fbb0c7c535ea53e6070bd8276f3f3d74f96efbaa6d85bd7b53b0f05"
+    },
+    {
+      "path": "src-tauri/src/main.rs",
+      "sha256": "57e5098c389d4a1c6a14190029c63ae3f5b7f7c717c8df49a42366354a77f0e9"
+    },
+    {
+      "path": "src-tauri/tauri.conf.json",
+      "sha256": "27e45ac60444c8eb1856bdaf297d56a5d0518bc2bf963d02c1a31a52f7065228"
+    },
+    {
+      "path": "src/App.svelte",
+      "sha256": "77ecbd07b1ed17da7c50fb8165c40b0b274ac5b40f98045fb5c810a9fbfdc441"
+    },
+    {
+      "path": "src/lib/MediaCard.svelte",
+      "sha256": "2112107004ecb33a6300720df017cfa2e1d82bc51664104e3c5da06b76ec5176"
+    },
+    {
+      "path": "src/lib/MediaRail.svelte",
+      "sha256": "9416442002b4a2c4699a609716236c62a76b026989ffa95633d0d2208f3eba17"
+    },
+    {
+      "path": "src/lib/Spotlight.svelte",
+      "sha256": "d172b084f8da4bc76c81a2d1246140b0436e0a77adc8afff9b6572c8ca873217"
+    },
+    {
+      "path": "src/lib/api.ts",
+      "sha256": "c2d5a32da98a8a51e6ef9010cf2f4a9a21030df0d45a054f5e7ce6f60a545139"
+    },
+    {
+      "path": "src/lib/types.ts",
+      "sha256": "6147e0d9d353ce56dbbe05eee70affb02ceec49562b098fb41780b61158e0ae1"
+    },
+    {
+      "path": "src/main.ts",
+      "sha256": "2c6d79e47913121485a3f740d0ff53fad913b06714c2768c076f7f76b6bd3d30"
+    },
+    {
+      "path": "src/style.css",
+      "sha256": "162e8ec6a825d9837f6de1000922c74f29aa161723071913cceb83f96e4423de"
+    },
+    {
+      "path": "src/vite-env.d.ts",
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+    },
+    {
+      "path": "tests/desktop.spec.ts",
+      "sha256": "ad43015bbbc01dcef5de6e4bebf6b40e465b8264f84a94b4b471f7a6264c4351"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "32bdde2661e9070dd4f7539d730fce1c0f4380d4ead1211e340e2cbead33ee5b"
+    },
+    {
+      "path": "vite.config.ts",
+      "sha256": "31800fad071b73e034d74a8746bcde2c11c504d736050bc46f24e18cb669b505"
+    }
+  ],
+  "localUpstreamRoot": "../reference/cloudstream-android"
+}

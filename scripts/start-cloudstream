@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+script_directory="$(cd -- "$(dirname -- "$0")" && pwd)"
+export CLOUDSTREAM_RESOURCE_DIR="$script_directory/resources"
+exec "$script_directory/cloudstream-desktop" "$@"

@@ -1,0 +1,19 @@
+node_modules/
+dist/
+target/
+.gradle/
+**/build/
+src-tauri/resources/worker/
+src-tauri/resources/jre/
+test-results/
+playwright-report/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+local.properties
+.local-data/
+src-tauri/gen/
+
+# Local Android reference checkout
+/reference/

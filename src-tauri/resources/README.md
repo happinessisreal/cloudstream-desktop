@@ -1,0 +1,1 @@
+Generated runtime files live here. Run `npm run worker:build` to create `worker/worker.jar`, `worker/desktop-sample.jar`, and the `jre/` runtime before packaging. These generated binaries are excluded from the source archive and source control.
