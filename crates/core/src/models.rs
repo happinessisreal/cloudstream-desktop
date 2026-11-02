@@ -725,11 +725,17 @@ impl PosterDensity {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppearanceSettings {
     #[serde(default)]
     pub poster_density: PosterDensity,
+    #[serde(default = "default_true")]
+    pub search_suggestions: bool,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -738,6 +744,7 @@ impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
             poster_density: PosterDensity::Comfortable,
+            search_suggestions: true,
             extra: BTreeMap::new(),
         }
     }
@@ -803,6 +810,22 @@ impl Default for Settings {
             extra: BTreeMap::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHistoryEntry {
+    pub id: String,
+    pub profile_id: String,
+    pub query: String,
+    pub searched_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResult {
+    pub items: Vec<MediaItem>,
+    pub has_next: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

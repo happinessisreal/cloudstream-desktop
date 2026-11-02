@@ -48,6 +48,7 @@
     Activity,
     FlaskConical,
     CheckCheck,
+    Clock,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -73,6 +74,9 @@
     ExtensionUpdate,
     BulkUpdateResult,
     ProviderTestReport,
+    SearchHistoryEntry,
+    SourceSearchState,
+    SearchFilters,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -90,11 +94,28 @@
   let snapshot = $state<Snapshot>(structuredClone(emptySnapshot));
   let providers = $state<Provider[]>([]);
   let selectedProvider = $state('');
+  let activeProfile = $state('default');
   let home = $state<Home>({ rows: [] });
   let query = $state('');
   let searchItems = $state<MediaItem[]>([]);
   let searchActive = $state(false);
   let submittedQuery = $state('');
+  let searchMode = $state<'all' | 'custom'>('all');
+  let selectedSearchProviders = $state<string[]>([]);
+  let sourceSearchStates = $state<Record<string, SourceSearchState>>({});
+  let searchViewMode = $state<'grouped' | 'merged'>('grouped');
+  let searchFilters = $state<SearchFilters>({
+    source: 'all',
+    type: 'all',
+    language: 'all',
+    quality: 'all',
+    dubStatus: 'all',
+  });
+  let searchHistory = $state<SearchHistoryEntry[]>([]);
+  let searchSuggestions = $state<string[]>([]);
+  let showSuggestionsDropdown = $state(false);
+  let suggestionAbortController: AbortController | null = null;
+  let suggestionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let loadingCategories = $state(false);
   let searchPage = $state(1);
   let searchHasNext = $state(false);
@@ -246,6 +267,7 @@
     providers = await call<Provider[]>('list_providers');
     if (!providers.some((p) => p.id === selectedProvider))
       selectedProvider = providers[0]?.id ?? '';
+    await loadSearchHistory();
     ready = true;
   }
   async function task(label: string, operation: () => Promise<void>) {
@@ -524,53 +546,357 @@
     modal = null;
     message('Provider test cancelled.');
   }
-  async function runSearch(event?: SubmitEvent, nextPage = 1) {
+  async function loadSearchHistory() {
+    if (!nativeAvailable()) return;
+    try {
+      searchHistory = await call<SearchHistoryEntry[]>('get_search_history', {
+        profileId: activeProfile,
+      });
+    } catch {
+      searchHistory = [];
+    }
+  }
+
+  async function addSearchHistory(q: string) {
+    if (!nativeAvailable() || !q.trim()) return;
+    try {
+      const entry = await call<SearchHistoryEntry>('add_search_history', {
+        profileId: activeProfile,
+        query: q.trim(),
+      });
+      searchHistory = [
+        entry,
+        ...searchHistory.filter((e) => e.query.toLowerCase() !== q.trim().toLowerCase()),
+      ].slice(0, 50);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function deleteSearchHistory(q: string) {
+    if (!nativeAvailable()) return;
+    try {
+      await call('delete_search_history_entry', {
+        profileId: activeProfile,
+        query: q,
+      });
+      searchHistory = searchHistory.filter((e) => e.query !== q);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function clearSearchHistory() {
+    if (!nativeAvailable()) return;
+    try {
+      await call('clear_search_history', { profileId: activeProfile });
+      searchHistory = [];
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  function onSearchInput(val: string) {
+    query = val;
+    if (suggestionDebounceTimer) {
+      clearTimeout(suggestionDebounceTimer);
+      suggestionDebounceTimer = null;
+    }
+    suggestionAbortController?.abort();
+
+    if (page === 'extensions') {
+      repoFilter = query;
+      return;
+    }
+    const trimmed = query.trim();
+    if (!trimmed) {
+      showSuggestionsDropdown = searchHistory.length > 0;
+      searchSuggestions = [];
+      return;
+    }
+    const suggestionsEnabled = snapshot.settings?.global?.appearance?.searchSuggestions ?? true;
+    if (!suggestionsEnabled) {
+      showSuggestionsDropdown = false;
+      searchSuggestions = [];
+      return;
+    }
+    if (trimmed.length < 2) {
+      searchSuggestions = [];
+      showSuggestionsDropdown = false;
+      return;
+    }
+    suggestionDebounceTimer = setTimeout(async () => {
+      suggestionAbortController = new AbortController();
+      const signal = suggestionAbortController.signal;
+      try {
+        const provId = selectedProvider || undefined;
+        const res = await call<string[]>(
+          'search_suggestions',
+          { profileId: activeProfile, query: trimmed, providerId: provId },
+          { signal },
+        );
+        if (!signal.aborted) {
+          searchSuggestions = res;
+          showSuggestionsDropdown = res.length > 0;
+        }
+      } catch {
+        // cancelled or error
+      }
+    }, 250);
+  }
+
+  async function updateSearchSuggestions(enabled: boolean) {
+    if (suggestionDebounceTimer) {
+      clearTimeout(suggestionDebounceTimer);
+      suggestionDebounceTimer = null;
+    }
+    suggestionAbortController?.abort();
+    if (snapshot.settings?.global?.appearance) {
+      snapshot.settings.global.appearance.searchSuggestions = enabled;
+    }
+    if (!enabled) {
+      showSuggestionsDropdown = false;
+      searchSuggestions = [];
+    }
+    try {
+      const updated = await updateSettings({ appearance: { searchSuggestions: enabled } });
+      if (snapshot.settings) {
+        snapshot.settings = updated;
+      }
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  function syncSearchItems() {
+    const combined: MediaItem[] = [];
+    let hasAnyNext = false;
+    for (const state of Object.values(sourceSearchStates)) {
+      combined.push(...state.items);
+      if (state.hasNext) hasAnyNext = true;
+    }
+    searchItems = combined;
+    searchHasNext = hasAnyNext;
+  }
+
+  function filterMediaItem(item: MediaItem): boolean {
+    if (searchFilters.source !== 'all' && item.providerId !== searchFilters.source) {
+      return false;
+    }
+    if (searchFilters.type !== 'all') {
+      const itemType = (item.mediaType || '').toLowerCase();
+      if (itemType !== searchFilters.type.toLowerCase()) return false;
+    }
+    if (searchFilters.quality !== 'all') {
+      const itemQuality = (item.quality || '').toLowerCase();
+      if (itemQuality !== searchFilters.quality.toLowerCase()) return false;
+    }
+    if (searchFilters.dubStatus !== 'all') {
+      const itemDub = (item.dubStatus || '').toLowerCase();
+      if (itemDub !== searchFilters.dubStatus.toLowerCase()) return false;
+    }
+    return true;
+  }
+
+  const filteredSearchItems = $derived(searchItems.filter(filterMediaItem));
+
+  async function runSearch(event?: SubmitEvent, targetProviderId?: string, nextPage = 1) {
     event?.preventDefault();
     if (page === 'extensions') {
       repoFilter = query.trim();
       extensionTab = 'browse';
       return;
     }
-    if (!selectedProvider || !query.trim()) {
+    showSuggestionsDropdown = false;
+    const q = query.trim();
+    if (!q) {
       searchActive = false;
-      if (!selectedProvider)
-        error =
-          'No active media sources. Open Extensions → Installed to see which sources can run.';
       return;
     }
+
+    const enabledProviders = providers.filter((p) => !p.disabled);
+    let targets: Provider[] = [];
+
+    if (targetProviderId) {
+      const found = providers.find((p) => p.id === targetProviderId);
+      if (found) targets = [found];
+    } else if (searchMode === 'custom' && selectedSearchProviders.length > 0) {
+      targets = enabledProviders.filter((p) => selectedSearchProviders.includes(p.id));
+    } else if (searchMode === 'all') {
+      targets = enabledProviders;
+    } else if (selectedProvider) {
+      const found = providers.find((p) => p.id === selectedProvider);
+      if (found) targets = [found];
+    }
+
+    if (targets.length === 0 && selectedProvider) {
+      const found = providers.find((p) => p.id === selectedProvider);
+      if (found) targets = [found];
+    }
+
+    if (targets.length === 0) {
+      searchActive = false;
+      error = 'No active media sources available to search. Open Extensions to connect or enable sources.';
+      return;
+    }
+
+    void addSearchHistory(q);
+
     searchAbortController?.abort();
     searchAbortController = new AbortController();
     const currentSignal = searchAbortController.signal;
 
     const version = ++searchVersion;
     ++providerVersion;
-    submittedQuery = query.trim();
+    submittedQuery = q;
     searchActive = true;
     loadingContent = true;
     error = '';
     page = 'discover';
     searchView = true;
     details = null;
+
+    if (nextPage === 1) {
+      const states: Record<string, SourceSearchState> = {};
+      for (const p of targets) {
+        states[p.id] = {
+          providerId: p.id,
+          providerName: p.name,
+          loading: true,
+          error: null,
+          items: [],
+          page: 1,
+          hasNext: false,
+        };
+      }
+      sourceSearchStates = states;
+    }
+
+    const promises = targets.map(async (p) => {
+      try {
+        const result = await call<SearchResult>(
+          'search',
+          { providerId: p.id, query: q, page: nextPage },
+          { signal: currentSignal, requestId: `search-${version}-${p.id}` },
+        );
+        if (version === searchVersion && !currentSignal.aborted) {
+          const prevItems = nextPage === 1 ? [] : (sourceSearchStates[p.id]?.items ?? []);
+          sourceSearchStates[p.id] = {
+            providerId: p.id,
+            providerName: p.name,
+            loading: false,
+            error: null,
+            items: [...prevItems, ...result.items],
+            page: nextPage,
+            hasNext: result.hasNext,
+          };
+          syncSearchItems();
+        }
+      } catch (e) {
+        if (currentSignal.aborted) return;
+        if (version === searchVersion) {
+          sourceSearchStates[p.id] = {
+            providerId: p.id,
+            providerName: p.name,
+            loading: false,
+            error: toErrorMessage(e),
+            items: sourceSearchStates[p.id]?.items ?? [],
+            page: sourceSearchStates[p.id]?.page ?? 1,
+            hasNext: sourceSearchStates[p.id]?.hasNext ?? false,
+          };
+        }
+      }
+    });
+
+    await Promise.allSettled(promises);
+    if (version === searchVersion) {
+      loadingContent = false;
+      syncSearchItems();
+    }
+  }
+
+  async function loadMoreSource(providerId: string) {
+    const state = sourceSearchStates[providerId];
+    if (!state || state.loading || !state.hasNext) return;
+
+    state.loading = true;
+    const nextPage = state.page + 1;
     try {
       const result = await call<SearchResult>(
         'search',
         {
-          providerId: selectedProvider,
-          query: query.trim(),
+          providerId,
+          query: submittedQuery,
           page: nextPage,
         },
-        { signal: currentSignal },
+        {
+          signal: searchAbortController?.signal,
+          requestId: `more-${searchVersion}-${providerId}-${nextPage}`,
+        },
       );
-      if (version === searchVersion && !currentSignal.aborted) {
-        searchItems = nextPage === 1 ? result.items : [...searchItems, ...result.items];
-        searchPage = nextPage;
-        searchHasNext = result.hasNext;
-      }
+      sourceSearchStates[providerId] = {
+        ...state,
+        loading: false,
+        items: [...state.items, ...result.items],
+        page: nextPage,
+        hasNext: result.hasNext,
+      };
+      syncSearchItems();
     } catch (e) {
-      if (currentSignal.aborted) return;
-      if (version === searchVersion) showError(e);
-    } finally {
-      if (version === searchVersion) loadingContent = false;
+      sourceSearchStates[providerId] = {
+        ...state,
+        loading: false,
+        error: toErrorMessage(e),
+      };
+    }
+  }
+
+  async function loadMoreAll() {
+    const sourcesWithMore = Object.values(sourceSearchStates).filter(
+      (s) => s.hasNext && !s.loading,
+    );
+    await Promise.allSettled(sourcesWithMore.map((s) => loadMoreSource(s.providerId)));
+  }
+
+  async function retrySource(providerId: string) {
+    const state = sourceSearchStates[providerId];
+    if (!state) return;
+    state.loading = true;
+    state.error = null;
+    try {
+      const result = await call<SearchResult>(
+        'search',
+        {
+          providerId,
+          query: submittedQuery,
+          page: state.page,
+        },
+        {
+          signal: searchAbortController?.signal,
+          requestId: `retry-${searchVersion}-${providerId}-${state.page}`,
+        },
+      );
+      sourceSearchStates[providerId] = {
+        ...state,
+        loading: false,
+        items: result.items,
+        hasNext: result.hasNext,
+      };
+      syncSearchItems();
+    } catch (e) {
+      sourceSearchStates[providerId] = {
+        ...state,
+        loading: false,
+        error: toErrorMessage(e),
+      };
+    }
+  }
+
+  function toggleSearchProvider(providerId: string) {
+    if (selectedSearchProviders.includes(providerId)) {
+      selectedSearchProviders = selectedSearchProviders.filter((id) => id !== providerId);
+    } else {
+      selectedSearchProviders = [...selectedSearchProviders, providerId];
     }
   }
   async function openItem(item: MediaItem) {
@@ -716,6 +1042,9 @@
       event.preventDefault();
       openSearch();
     }
+    if (event.key === 'Escape' && showSuggestionsDropdown) {
+      showSuggestionsDropdown = false;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
       event.preventDefault();
       if (!selectedProvider) page = 'extensions';
@@ -747,7 +1076,15 @@
   });
 </script>
 
-<svelte:window onkeydown={shortcut} />
+<svelte:window
+  onkeydown={shortcut}
+  onpointerdown={(e) => {
+    const target = e.target as HTMLElement | null;
+    if (showSuggestionsDropdown && !target?.closest('.search-bar-container')) {
+      showSuggestionsDropdown = false;
+    }
+  }}
+/>
 
 <a class="skip-link" href="#main-content">Skip to content</a>
 <div class="app-shell" class:compact={posterDensity === 'compact'}>
@@ -859,28 +1196,87 @@
                 ? 'Extensions'
                 : 'Settings'}
       </div>
-      <form class="search-bar" onsubmit={runSearch}>
-        <Search size={19} /><input
-          bind:this={searchInput}
-          bind:value={query}
-          aria-label={page === 'extensions' ? 'Search extensions' : 'Search your selected source'}
-          placeholder={page === 'extensions'
-            ? 'Search extensions…'
-            : activeProvider
-              ? 'Search movies, series, anime…'
-              : 'Connect a source to search'}
-          disabled={!selectedProvider && page !== 'extensions'}
-          oninput={() => {
-            if (page === 'extensions') repoFilter = query;
-          }}
-        /><kbd>Ctrl K</kbd><button
-          class="search-submit"
-          type="submit"
-          aria-label="Search"
-          disabled={(!selectedProvider && page !== 'extensions') || !query.trim()}
-          ><ArrowRight size={18} /></button
-        >
-      </form>
+      <div class="search-bar-container">
+        <form class="search-bar" onsubmit={runSearch}>
+          <Search size={19} /><input
+            bind:this={searchInput}
+            value={query}
+            aria-label={page === 'extensions' ? 'Search extensions' : 'Search your selected source'}
+            placeholder={page === 'extensions'
+              ? 'Search extensions…'
+              : activeProvider
+                ? 'Search movies, series, anime…'
+                : 'Connect a source to search'}
+            disabled={!selectedProvider && page !== 'extensions'}
+            onfocus={() => {
+              if (page !== 'extensions') {
+                if (!query.trim() && searchHistory.length > 0) {
+                  showSuggestionsDropdown = true;
+                } else if (query.trim().length >= 2 && searchSuggestions.length > 0) {
+                  showSuggestionsDropdown = true;
+                }
+              }
+            }}
+            oninput={(e) => onSearchInput(e.currentTarget.value)}
+          /><kbd>Ctrl K</kbd><button
+            class="search-submit"
+            type="submit"
+            aria-label="Search"
+            disabled={(!selectedProvider && page !== 'extensions') || !query.trim()}
+            ><ArrowRight size={18} /></button
+          >
+        </form>
+        {#if showSuggestionsDropdown && page !== 'extensions'}
+          <div class="search-suggestions-dropdown" role="listbox">
+            {#if !query.trim() && searchHistory.length > 0}
+              <div class="suggestions-header">
+                <span>Recent searches</span>
+                <button type="button" class="text-button" onclick={clearSearchHistory}>Clear all</button>
+              </div>
+              {#each searchHistory as entry}
+                <div class="suggestion-item">
+                  <button
+                    type="button"
+                    class="suggestion-text"
+                    onclick={() => {
+                      query = entry.query;
+                      void runSearch();
+                    }}
+                  >
+                    <Clock size={15} />
+                    <span>{entry.query}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-button mini"
+                    aria-label="Delete history entry"
+                    onclick={() => deleteSearchHistory(entry.query)}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              {/each}
+            {:else if searchSuggestions.length > 0}
+              <div class="suggestions-header">
+                <span>Suggestions</span>
+              </div>
+              {#each searchSuggestions as sug}
+                <button
+                  type="button"
+                  class="suggestion-item suggestion-button"
+                  onclick={() => {
+                    query = sug;
+                    void runSearch();
+                  }}
+                >
+                  <Search size={15} />
+                  <span>{sug}</span>
+                </button>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </div>
       {#if providers.length}<div class="topbar-source">
           <span class="provider-avatar"><Globe size={16} /></span>
           <div>
@@ -1100,34 +1496,187 @@
               <div><LoaderCircle class="spin" size={21} />Loading {activeProvider?.name}…</div>
             </div>
           {:else if searchView}
-            {#if searchActive}<section class="section search-results">
+            {#if searchActive}
+              <section class="section search-results">
                 <div class="section-title">
                   <h2>Results for “{submittedQuery}”</h2>
-                  <span>{searchItems.length} {searchItems.length === 1 ? 'title' : 'titles'}</span>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <span>{filteredSearchItems.length} {filteredSearchItems.length === 1 ? 'title' : 'titles'}</span>
+                    <div class="segmented-control" role="group" aria-label="Search view mode">
+                      <button
+                        type="button"
+                        class="segmented-item"
+                        class:active={searchViewMode === 'grouped'}
+                        aria-pressed={searchViewMode === 'grouped'}
+                        onclick={() => (searchViewMode = 'grouped')}>Grouped</button
+                      >
+                      <button
+                        type="button"
+                        class="segmented-item"
+                        class:active={searchViewMode === 'merged'}
+                        aria-pressed={searchViewMode === 'merged'}
+                        onclick={() => (searchViewMode = 'merged')}>Merged</button
+                      >
+                    </div>
+                  </div>
                 </div>
-                <div class="media-grid">
-                  {#each searchItems as item, i}<MediaCard
-                      {item}
-                      index={i}
-                      onclick={() => openItem(item)}
-                    />{/each}
+
+                <!-- Source selector and client-side filters -->
+                <div class="search-view-controls">
+                  {#if providers.length > 1}
+                    <div class="search-source-selector">
+                      <span class="nav-label" style="margin-right: 4px;">SOURCES:</span>
+                      <button
+                        type="button"
+                        class="segmented-item"
+                        class:active={searchMode === 'all'}
+                        aria-pressed={searchMode === 'all'}
+                        onclick={() => {
+                          searchMode = 'all';
+                          selectedSearchProviders = [];
+                          void runSearch();
+                        }}
+                      >
+                        All sources ({providers.filter((p) => !p.disabled).length})
+                      </button>
+                      {#each providers.filter((p) => !p.disabled) as prov}
+                        <button
+                          type="button"
+                          class="segmented-item"
+                          class:active={searchMode === 'custom' && selectedSearchProviders.includes(prov.id)}
+                          aria-pressed={searchMode === 'custom' && selectedSearchProviders.includes(prov.id)}
+                          onclick={() => {
+                            searchMode = 'custom';
+                            toggleSearchProvider(prov.id);
+                            void runSearch();
+                          }}
+                        >
+                          {prov.name}
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <!-- Structured filters for loaded items -->
+                  <div class="search-filters-bar">
+                    <div class="search-filter-group">
+                      <label for="filter-type">Type:</label>
+                      <select id="filter-type" bind:value={searchFilters.type}>
+                        <option value="all">All types</option>
+                        <option value="Movie">Movies</option>
+                        <option value="TvSeries">TV Series</option>
+                        <option value="Anime">Anime</option>
+                      </select>
+                    </div>
+                    <div class="search-filter-group">
+                      <label for="filter-quality">Quality:</label>
+                      <select id="filter-quality" bind:value={searchFilters.quality}>
+                        <option value="all">All qualities</option>
+                        <option value="HD">HD</option>
+                        <option value="4K">4K</option>
+                        <option value="SD">SD</option>
+                      </select>
+                    </div>
+                    <div class="search-filter-group">
+                      <label for="filter-dub">Audio/Sub:</label>
+                      <select id="filter-dub" bind:value={searchFilters.dubStatus}>
+                        <option value="all">All audio</option>
+                        <option value="dubbed">Dubbed</option>
+                        <option value="subbed">Subbed</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                {#if !searchItems.length}<div class="empty-state">
+
+                <!-- Source scoped errors if any source failed -->
+                {#each Object.values(sourceSearchStates) as state}
+                  {#if state.error}
+                    <div class="error-banner" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                      <span><strong>{state.providerName}:</strong> {state.error}</span>
+                      <button type="button" class="button secondary" style="padding: 4px 10px; font-size: 12px;" onclick={() => retrySource(state.providerId)}>
+                        Retry
+                      </button>
+                    </div>
+                  {/if}
+                {/each}
+
+                {#if searchViewMode === 'grouped'}
+                  <!-- Grouped by Source View -->
+                  {#each Object.entries(sourceSearchStates) as [provId, state]}
+                    {@const sourceItems = state.items.filter(filterMediaItem)}
+                    <div class="source-group-section" data-source-id={provId}>
+                      <div class="source-group-header">
+                        <div class="source-group-title">
+                          <Globe size={16} />
+                          <span>{state.providerName}</span>
+                          <span class="tag-pill">{sourceItems.length} {sourceItems.length === 1 ? 'item' : 'items'}</span>
+                          {#if state.loading}
+                            <LoaderCircle class="spin" size={16} />
+                          {/if}
+                        </div>
+                        {#if state.hasNext}
+                          <button
+                            type="button"
+                            class="button secondary"
+                            style="padding: 4px 10px; font-size: 12px;"
+                            disabled={state.loading}
+                            onclick={() => loadMoreSource(provId)}
+                          >
+                            Load more from {state.providerName}
+                          </button>
+                        {/if}
+                      </div>
+
+                      {#if sourceItems.length > 0}
+                        <div class="media-grid">
+                          {#each sourceItems as item, i}
+                            <MediaCard {item} index={i} onclick={() => openItem(item)} />
+                          {/each}
+                        </div>
+                      {:else if !state.loading && !state.error}
+                        <p style="color: var(--subtle); font-size: 13px; margin: 8px 0 16px;">No titles found from this source.</p>
+                      {/if}
+                    </div>
+                  {/each}
+                {:else}
+                  <!-- Merged Grid View -->
+                  <div class="media-grid">
+                    {#each filteredSearchItems as item, i}
+                      <MediaCard {item} index={i} onclick={() => openItem(item)} />
+                    {/each}
+                  </div>
+                {/if}
+
+                {#if searchHasNext}
+                  <button
+                    class="button secondary load-more"
+                    onclick={loadMoreAll}
+                    disabled={loadingContent}
+                  >
+                    Load more results <ChevronRight size={17} />
+                  </button>
+                {/if}
+
+                {#if !searchItems.length && !loadingContent && Object.values(sourceSearchStates).every((s) => !s.loading)}
+                  <div class="empty-state">
                     <Search size={42} strokeWidth={1.3} />
                     <h3>No matches this time</h3>
                     <p>Try another title or choose a different source above.</p>
-                  </div>{/if}{#if searchHasNext}<button
-                    class="button secondary load-more"
-                    onclick={() => runSearch(undefined, searchPage + 1)}
-                    >Load more results <ChevronRight size={17} /></button
-                  >{/if}
+                  </div>
+                {/if}
               </section>
-            {:else}<div class="empty-state search-empty">
+            {:else}
+              <div class="empty-state search-empty">
                 <div class="empty-search-icon"><Search size={42} strokeWidth={1.3} /></div>
                 <h2>What would you like to watch?</h2>
-                <p>Search {activeProvider?.name} for a movie, series or anime.</p>
+                <p>
+                  {activeProvider
+                    ? `Search ${activeProvider.name} for a movie, series or anime.`
+                    : 'Search movies, series or anime across your connected sources.'}
+                </p>
                 <span class="shortcut-hint"><kbd>Ctrl</kbd> + <kbd>K</kbd> to focus search</span>
-              </div>{/if}
+              </div>
+            {/if}
           {:else if expandedCategory !== null}
             <button class="back-button" onclick={() => (expandedCategory = null)}
               ><ChevronLeft size={18} />Back to home</button
@@ -1566,6 +2115,32 @@
                       size={17}
                     />{/if}{density === 'comfortable' ? 'Comfortable' : 'Compact'}</button
                 >{/each}
+            </div>
+          </div>
+          <div class="preference-row">
+            <div>
+              <strong>Search suggestions</strong>
+              <p>Show query suggestions and quick search results as you type.</p>
+            </div>
+            <div class="segmented-control" role="group" aria-label="Search suggestions">
+              <button
+                type="button"
+                aria-label="Enable search suggestions"
+                aria-pressed={snapshot.settings?.global?.appearance?.searchSuggestions ?? true}
+                class:chosen={snapshot.settings?.global?.appearance?.searchSuggestions ?? true}
+                onclick={() => updateSearchSuggestions(true)}
+              >
+                Enabled
+              </button>
+              <button
+                type="button"
+                aria-label="Disable search suggestions"
+                aria-pressed={!(snapshot.settings?.global?.appearance?.searchSuggestions ?? true)}
+                class:chosen={!(snapshot.settings?.global?.appearance?.searchSuggestions ?? true)}
+                onclick={() => updateSearchSuggestions(false)}
+              >
+                Disabled
+              </button>
             </div>
           </div>
         </section>

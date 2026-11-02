@@ -113,5 +113,30 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Playwright UI tests: `npm run test:ui` (16 passed, including tests for update check/bulk updates and provider self-tester modal).
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
 
+### [T08] Complete search parity, filters and suggestions
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Extended protocol and worker with `quickSearch` method support in Kotlin worker (`Main.kt`, `protocol/README.md`) and rebuilt `worker.jar`. Added typed models in Rust (`SearchHistoryEntry`, `SearchResult`, `search_suggestions` field on `AppearanceSettings`) and TypeScript (`SearchHistoryEntry`, `SourceSearchState`, `SearchFilters`).
+  2. Implemented SQLite search history CRUD in `Store` (`crates/core/src/store.rs`) scoped by profile ID with exact prefix isolation (`substr(id, 1, length(?1)) = ?1`), tie-breaking order (`ORDER BY updated DESC, rowid DESC`), and ACID durability surviving database re-open.
+  3. Implemented `search_provider`, `quick_search_provider`, and `search_suggestions` in `crates/core/src/lib.rs`. Suggestions combine profile search history and provider quick search queries with deduplication, order preservation, and a 10-item cap.
+  4. Exposed `quick_search`, `get_search_history`, `add_search_history`, `delete_search_history_entry`, `clear_search_history`, and `search_suggestions` Tauri commands in `src-tauri/src/main.rs`.
+  5. Built comprehensive frontend search in `src/App.svelte` and `src/style.css`:
+     - Multi-source federated search orchestrating concurrent cancellable queries with request session IDs and stale response discarding.
+     - Fault isolation: failing sources display source-scoped error banners with retry buttons without halting healthy source results.
+     - Grouped by source vs Merged grid view modes toggleable with responsive grids, preserving items without collapsing titles.
+     - Client-side loaded items filters for media type, quality, and dub/audio status.
+     - Per-source pagination ("Load more from {providerName}") affecting only the requested source.
+     - Search history and debounced (250ms) suggestions dropdown with entry deletion, click-outside dismissal, and Escape shortcut.
+     - Search suggestions opt-out toggle in Settings under Appearance, immediately halting network suggestion requests.
+- **Validation:**
+  - Rust tests: `cargo test --test search_parity` (3 passed: history CRUD/isolation across restart, suggestions combining history and quick search, and pagination/cancellation).
+  - All core tests: `cargo test -p cloudstream-core` (46 passed, 1 ignored).
+  - Tauri check: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (18 passed, including federated search error isolation, view modes, per-source pagination, search history, and settings opt-out).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
 ## Next Ready Tasks
-- **[T08]** Complete search parity, filters and suggestions (Depends on: T03, T04, T06)
+- **[T10]** Local library statuses, favorites and watched episodes (Depends on: T01, T02, T03)
+- **[T09]** Home parity, category fidelity and caching (Depends on: T03, T04, T10)

@@ -160,6 +160,63 @@ async fn search(
     .map_err(error)
 }
 #[tauri::command]
+async fn quick_search(
+    app: State<'_, Backend>,
+    provider_id: String,
+    query: String,
+    request_id: Option<String>,
+) -> Reply<SearchResult> {
+    app.quick_search_provider(&provider_id, &query, request_id.as_deref())
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+fn get_search_history(
+    app: State<'_, Backend>,
+    profile_id: Option<String>,
+) -> Reply<Vec<SearchHistoryEntry>> {
+    let pid = profile_id.unwrap_or_else(|| "default".to_string());
+    app.get_search_history(&pid).map_err(error)
+}
+#[tauri::command]
+fn add_search_history(
+    app: State<'_, Backend>,
+    profile_id: Option<String>,
+    query: String,
+) -> Reply<SearchHistoryEntry> {
+    let pid = profile_id.unwrap_or_else(|| "default".to_string());
+    app.add_search_history(&pid, &query).map_err(error)
+}
+#[tauri::command]
+fn delete_search_history_entry(
+    app: State<'_, Backend>,
+    profile_id: Option<String>,
+    query: String,
+) -> Reply<()> {
+    let pid = profile_id.unwrap_or_else(|| "default".to_string());
+    app.delete_search_history_entry(&pid, &query).map_err(error)
+}
+#[tauri::command]
+fn clear_search_history(
+    app: State<'_, Backend>,
+    profile_id: Option<String>,
+) -> Reply<()> {
+    let pid = profile_id.unwrap_or_else(|| "default".to_string());
+    app.clear_search_history(&pid).map_err(error)
+}
+#[tauri::command]
+async fn search_suggestions(
+    app: State<'_, Backend>,
+    profile_id: Option<String>,
+    query: String,
+    provider_id: Option<String>,
+) -> Reply<Vec<String>> {
+    let pid = profile_id.unwrap_or_else(|| "default".to_string());
+    app.search_suggestions(&pid, &query, provider_id.as_deref())
+        .await
+        .map_err(error)
+}
+#[tauri::command]
 async fn load_details(
     app: State<'_, Backend>,
     provider_id: String,
@@ -283,6 +340,12 @@ fn main() {
             delete_provider_clone,
             provider_home,
             search,
+            quick_search,
+            get_search_history,
+            add_search_history,
+            delete_search_history_entry,
+            clear_search_history,
+            search_suggestions,
             load_details,
             resolve_links,
             cancel_request,

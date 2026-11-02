@@ -238,6 +238,13 @@ private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?):
         val result = withTimeout(timeout) { api.search(params.path("query").asText(), page) }
         mapOf("items" to result?.items?.map { mapSearchItem(api, it) }.orEmpty(), "hasNext" to (result?.hasNext ?: false))
     }
+    "quickSearch" -> {
+        val api = provider(params.path("providerId").asText())
+        if (api.usesWebView) error("This source requires Android WebView and cannot be searched by the desktop worker yet")
+        val timeout = getCappedTimeout(api.quickSearchTimeoutMs ?: api.searchTimeoutMs, 10_000L)
+        val result = withTimeout(timeout) { api.quickSearch(params.path("query").asText()) }
+        mapOf("items" to result?.map { mapSearchItem(api, it) }.orEmpty())
+    }
     "getMainPage" -> {
         val providerId = params.path("providerId").asText()
         val api = provider(providerId)

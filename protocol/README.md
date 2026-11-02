@@ -57,6 +57,7 @@ Failure:
 | `inspectPackage` | `path` | Pre-flight package inspection without loading: format, sha256, apiVersion, entryClass, requiresResources, unavailableApis, actionableFailure, pluginType |
 | `getMainPage` | `providerId`, `page`, optional `section` | `{ rows: [{ rowId, name, horizontalImages, orientation, items, hasNext }], nextSection, hasMoreSections }` |
 | `search` | `providerId`, `query`, `page` | `{ items: [MediaItem with score, quality, year, dubStatus, otherName, etc.], hasNext }` |
+| `quickSearch` | `providerId`, `query` | `{ items: [MediaItem] }` (Fast search query for providers advertising `hasQuickSearch`) |
 | `load` | `providerId`, provider-owned `url` | Enriched details (syncData, trailers, actors, recommendations, dubGroups, seasons, uniqueUrl, backgroundPosterUrl, logoUrl, contentRating) |
 | `loadLinks` | `providerId`, opaque episode `data` | Discriminated streams (direct, HLS, DASH, playlist, torrent, DRM) and subtitles; streams incremental progress events |
 | `cancel` | `id` (target request ID) | `{ "cancelled": boolean, "targetId": string }` |

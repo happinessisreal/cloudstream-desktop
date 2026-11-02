@@ -360,6 +360,7 @@ export type PosterDensity = 'comfortable' | 'compact';
 
 export interface AppearanceSettings {
   posterDensity: PosterDensity;
+  searchSuggestions?: boolean;
   [key: string]: unknown;
 }
 
@@ -401,4 +402,29 @@ export interface Home {
   nextSection?: number;
   hasMoreSections?: boolean;
   [key: string]: unknown;
+}
+
+export interface SearchHistoryEntry {
+  id: string;
+  profileId: string;
+  query: string;
+  searchedAt: number;
+}
+
+export interface SourceSearchState {
+  providerId: string;
+  providerName: string;
+  loading: boolean;
+  error: string | null;
+  items: MediaItem[];
+  page: number;
+  hasNext: boolean;
+}
+
+export interface SearchFilters {
+  source: string;
+  type: string;
+  language: string;
+  quality: string;
+  dubStatus: string;
 }

@@ -559,6 +559,78 @@ impl Store {
         self.save_watch_progress(&progress)?;
         Ok(())
     }
+
+    pub fn get_search_history(&self, profile_id: &str) -> Result<Vec<SearchHistoryEntry>> {
+        let prefix = format!("{profile_id}::");
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT value FROM records WHERE kind = 'search_history' AND substr(id, 1, length(?1)) = ?1 ORDER BY updated DESC, rowid DESC LIMIT 50",
+        )?;
+        let rows = stmt.query_map([&prefix], |row| row.get::<_, String>(0))?;
+        let mut entries = Vec::new();
+        for r in rows {
+            let s = r?;
+            if let Ok(entry) = serde_json::from_str::<SearchHistoryEntry>(&s) {
+                entries.push(entry);
+            }
+        }
+        Ok(entries)
+    }
+
+    pub fn add_search_history(&self, profile_id: &str, query: &str) -> Result<SearchHistoryEntry> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            bail!("Search query cannot be empty");
+        }
+        let now_ms = timestamp_ms();
+        let id = format!("{profile_id}::{trimmed}");
+        let entry = SearchHistoryEntry {
+            id: id.clone(),
+            profile_id: profile_id.to_string(),
+            query: trimmed.to_string(),
+            searched_at: now_ms,
+        };
+        let value = serde_json::to_string(&entry)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        connection.execute(
+            "INSERT INTO records (kind, id, value, updated) VALUES ('search_history', ?1, ?2, ?3)
+             ON CONFLICT(kind, id) DO UPDATE SET value = excluded.value, updated = excluded.updated",
+            params![id, value, now_ms],
+        )?;
+        Ok(entry)
+    }
+
+    pub fn delete_search_history_entry(&self, profile_id: &str, query: &str) -> Result<()> {
+        let id = format!("{profile_id}::{}", query.trim());
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        connection.execute(
+            "DELETE FROM records WHERE kind = 'search_history' AND id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_search_history(&self, profile_id: &str) -> Result<()> {
+        let prefix = format!("{profile_id}::");
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        connection.execute(
+            "DELETE FROM records WHERE kind = 'search_history' AND substr(id, 1, length(?1)) = ?1",
+            params![prefix],
+        )?;
+        Ok(())
+    }
 }
 
 pub fn json_merge(target: &mut serde_json::Value, patch: &serde_json::Value) {

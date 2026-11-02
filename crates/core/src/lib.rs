@@ -770,6 +770,130 @@ impl App {
         }
         Ok(())
     }
+
+    pub fn get_search_history(&self, profile_id: &str) -> Result<Vec<SearchHistoryEntry>> {
+        self.store.get_search_history(profile_id)
+    }
+
+    pub fn add_search_history(&self, profile_id: &str, query: &str) -> Result<SearchHistoryEntry> {
+        self.store.add_search_history(profile_id, query)
+    }
+
+    pub fn delete_search_history_entry(&self, profile_id: &str, query: &str) -> Result<()> {
+        self.store.delete_search_history_entry(profile_id, query)
+    }
+
+    pub fn clear_search_history(&self, profile_id: &str) -> Result<()> {
+        self.store.clear_search_history(profile_id)
+    }
+
+    pub async fn search_provider(
+        &self,
+        provider_id: &str,
+        query: &str,
+        page: u32,
+        request_id: Option<&str>,
+    ) -> Result<SearchResult> {
+        let val = self
+            .call_cancellable(
+                request_id,
+                "search",
+                serde_json::json!({
+                    "providerId": provider_id,
+                    "query": query,
+                    "page": page,
+                }),
+            )
+            .await?;
+        let res: SearchResult = serde_json::from_value(val)?;
+        Ok(res)
+    }
+
+    pub async fn quick_search_provider(
+        &self,
+        provider_id: &str,
+        query: &str,
+        request_id: Option<&str>,
+    ) -> Result<SearchResult> {
+        let val = match self
+            .call_cancellable(
+                request_id,
+                "quickSearch",
+                serde_json::json!({
+                    "providerId": provider_id,
+                    "query": query,
+                }),
+            )
+            .await
+        {
+            Ok(v) => v,
+            Err(_) => {
+                self.call_cancellable(
+                    request_id,
+                    "search",
+                    serde_json::json!({
+                        "providerId": provider_id,
+                        "query": query,
+                        "page": 1,
+                    }),
+                )
+                .await?
+            }
+        };
+        let res: SearchResult = serde_json::from_value(val)?;
+        Ok(res)
+    }
+
+    pub async fn search_suggestions(
+        &self,
+        profile_id: &str,
+        query: &str,
+        provider_id: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let trimmed = query.trim();
+        if trimmed.len() < 2 {
+            return Ok(Vec::new());
+        }
+
+        let mut suggestions = Vec::new();
+        let query_lower = trimmed.to_lowercase();
+
+        // 1. History matches
+        if let Ok(history) = self.store.get_search_history(profile_id) {
+            for entry in history {
+                if entry.query.to_lowercase().contains(&query_lower) {
+                    if !suggestions.iter().any(|s: &String| s.eq_ignore_ascii_case(&entry.query)) {
+                        suggestions.push(entry.query);
+                    }
+                }
+                if suggestions.len() >= 5 {
+                    break;
+                }
+            }
+        }
+
+        // 2. Provider quickSearch matches (if requested and supported)
+        if let Some(pid) = provider_id {
+            let providers = self.providers().await.unwrap_or_default();
+            if let Some(prov) = providers.iter().find(|p| p.id == pid) {
+                if prov.capabilities.as_ref().is_some_and(|c| c.has_quick_search) {
+                    if let Ok(res) = self.quick_search_provider(pid, trimmed, None).await {
+                        for item in res.items {
+                            if !suggestions.iter().any(|s: &String| s.eq_ignore_ascii_case(&item.name)) {
+                                suggestions.push(item.name);
+                            }
+                            if suggestions.len() >= 10 {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        suggestions.truncate(10);
+        Ok(suggestions)
+    }
 }
 
 pub fn clean_interrupted_updates(dir: &std::path::Path) {

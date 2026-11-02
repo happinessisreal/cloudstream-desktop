@@ -96,20 +96,67 @@ async function desktopFixture(page: Page, unsupported = false) {
       switch (command) {
         case 'snapshot': {
           const snap = structuredClone(state);
-          snap.providers = state.installed.length && !unsupported ? [provider] : [];
+          const extra = (window as any).__extraProviders || [];
+          snap.providers = state.installed.length && !unsupported ? [provider, ...extra] : extra;
           return snap;
         }
-        case 'list_providers':
-          return state.installed.length && !unsupported ? [provider] : [];
+        case 'list_providers': {
+          const extra = (window as any).__extraProviders || [];
+          return state.installed.length && !unsupported ? [provider, ...extra] : extra;
+        }
         case 'install_sample':
           state.installed = [plugin];
           return plugin;
         case 'provider_home':
           return { rows: [{ name: 'Open movies', items: [item], hasNext: false }] };
         case 'search':
+          if (args.providerId === 'failing:Error Source') {
+            throw new Error('Connection refused by provider host');
+          }
           if (args.query === 'first slow search') {
             await new Promise((resolve) => setTimeout(resolve, 800));
           }
+          return {
+            items: String(args.query).toLowerCase().includes('bunny') ? [item] : [],
+            hasNext: args.page === 1 && String(args.query).toLowerCase().includes('bunny'),
+          };
+        case 'get_search_history':
+          return (state as any).searchHistory || [];
+        case 'add_search_history': {
+          if (!(state as any).searchHistory) (state as any).searchHistory = [];
+          const entry = {
+            id: `${args.profileId || 'default'}::${args.query}`,
+            profileId: args.profileId || 'default',
+            query: args.query,
+            searchedAt: Date.now(),
+          };
+          (state as any).searchHistory = [
+            entry,
+            ...(state as any).searchHistory.filter((e: any) => e.query !== args.query),
+          ];
+          return entry;
+        }
+        case 'delete_search_history_entry':
+          if ((state as any).searchHistory) {
+            (state as any).searchHistory = (state as any).searchHistory.filter(
+              (e: any) => e.query !== args.query,
+            );
+          }
+          return null;
+        case 'clear_search_history':
+          (state as any).searchHistory = [];
+          return null;
+        case 'search_suggestions': {
+          const q = String(args.query || '').toLowerCase();
+          const list = ((state as any).searchHistory || [])
+            .map((e: any) => e.query)
+            .filter((s: string) => s.toLowerCase().includes(q));
+          if ('big buck bunny'.includes(q) && !list.includes('Big Buck Bunny')) {
+            list.push('Big Buck Bunny');
+          }
+          return list;
+        }
+        case 'quick_search':
           return {
             items: String(args.query).toLowerCase().includes('bunny') ? [item] : [],
             hasNext: false,
@@ -242,6 +289,9 @@ async function desktopFixture(page: Page, unsupported = false) {
           const density = patch.appearance?.posterDensity || patch.posterDensity;
           if (density) {
             state.settings.global.appearance.posterDensity = density;
+          }
+          if (patch.appearance?.searchSuggestions !== undefined) {
+            state.settings.global.appearance.searchSuggestions = patch.appearance.searchSuggestions;
           }
           state.settings.revision = (state.settings.revision || 1) + 1;
           return structuredClone(state.settings);
@@ -572,4 +622,95 @@ test('source self-tester runs stages and displays diagnostics', async ({ page })
   // Close tester modal
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Source Self-Tester' })).not.toBeVisible();
+});
+
+test('federated search isolates errors, supports view modes, and paginates per source', async ({
+  page,
+}) => {
+  await desktopFixture(page);
+
+  // Add an extra failing provider via __extraProviders
+  await page.evaluate(() => {
+    (window as any).__extraProviders = [
+      {
+        id: 'failing:Error Source',
+        pluginId: 'error_plugin',
+        name: 'Broken Provider',
+        lang: 'en',
+        mainUrl: 'https://broken.example',
+        hasMainPage: false,
+        usesWebView: false,
+        disabled: false,
+        capabilities: {
+          hasMainPage: false,
+          hasQuickSearch: false,
+          hasDownloadSupport: false,
+          hasChromecastSupport: false,
+          usesWebView: false,
+        },
+      },
+    ];
+  });
+
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+
+  const searchInput = page.getByLabel('Search your selected source');
+  await searchInput.fill('Bunny');
+  await searchInput.press('Enter');
+
+  // Verify healthy provider returned results
+  await expect(page.getByRole('button', { name: /Big Buck Bunny · Trailer/ })).toBeVisible();
+
+  // Verify failing provider shows error banner without crashing the healthy results
+  await expect(page.getByText('Broken Provider:')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+
+  // Switch between Grouped and Merged views
+  await page.getByRole('button', { name: 'Merged', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Big Buck Bunny · Trailer/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Grouped', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Big Buck Bunny · Trailer/ })).toBeVisible();
+
+  // Per-source load more
+  const loadMoreBtn = page.getByRole('button', { name: 'Load more from Blender Open Movies' });
+  await expect(loadMoreBtn).toBeVisible();
+  await loadMoreBtn.click();
+  const calls = await page.evaluate(() => (window as any).__calls);
+  expect(calls.some((c: any) => c.command === 'search' && c.args.page === 2)).toBe(true);
+});
+
+test('search history and suggestions respect settings opt-out', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+
+  // 1. Submit search to populate history
+  const searchInput = page.getByLabel('Search your selected source');
+  await searchInput.fill('Bunny');
+  await searchInput.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Results for “Bunny”' })).toBeVisible();
+
+  // Clear query and focus to see history
+  await searchInput.fill('');
+  await searchInput.focus();
+  await expect(page.getByText('Recent searches')).toBeVisible();
+
+  // 2. Opt-out in Settings
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Disable search suggestions', exact: true }).click();
+
+  // Clear calls log
+  await page.evaluate(() => {
+    (window as any).__calls = [];
+  });
+
+  // Navigate back to search and type
+  await page.getByRole('button', { name: 'Search page', exact: true }).click();
+  const searchInput2 = page.getByLabel('Search your selected source');
+  await searchInput2.fill('Bun');
+
+  // Wait a short moment and verify NO search_suggestions calls occurred
+  await page.waitForTimeout(350);
+  const calls = await page.evaluate(() => (window as any).__calls);
+  expect(calls.some((c: any) => c.command === 'search_suggestions')).toBe(false);
 });
