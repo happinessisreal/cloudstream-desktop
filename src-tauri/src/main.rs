@@ -133,12 +133,15 @@ async fn provider_home(
     provider_id: String,
     page: u32,
     section: Option<u32>,
+    force_refresh: Option<bool>,
     request_id: Option<String>,
 ) -> Reply<Value> {
-    app.call_cancellable(
+    app.provider_home(
+        &provider_id,
+        page,
+        section.unwrap_or(0),
+        force_refresh.unwrap_or(false),
         request_id.as_deref(),
-        "getMainPage",
-        json!({"providerId":provider_id,"page":page,"section":section.unwrap_or(0)}),
     )
     .await
     .map_err(error)

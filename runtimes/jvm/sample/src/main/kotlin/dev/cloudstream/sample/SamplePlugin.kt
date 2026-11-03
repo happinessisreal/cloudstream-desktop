@@ -26,7 +26,10 @@ class BlenderFilms : MainAPI() {
     override val loadTimeoutMs = 20_000L
     override val loadLinksTimeoutMs = 20_000L
 
-    override val mainPage = listOf(MainPageData("Open movies", "films", horizontalImages = true))
+    override val mainPage = listOf(
+        MainPageData("Open movies", "films", horizontalImages = true),
+        MainPageData("Community picks", "community", horizontalImages = false)
+    )
     private val films = listOf(
         Film(
             "Big Buck Bunny · Trailer",
@@ -45,9 +48,15 @@ class BlenderFilms : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val items = if (page == 1) films.map { result(it) } else emptyList()
-        val list = HomePageList(request.name, items, isHorizontalImages = request.horizontalImages)
-        return newHomePageResponse(listOf(list), hasNext = false)
+        return if (request.name == "Community picks") {
+            val list1 = HomePageList("Popular open titles", listOf(result(films[0])), isHorizontalImages = false)
+            val list2 = HomePageList("Classic animations", listOf(result(films[1])), isHorizontalImages = false)
+            newHomePageResponse(listOf(list1, list2), hasNext = page < 2)
+        } else {
+            val items = if (page == 1) films.map { result(it) } else emptyList()
+            val list = HomePageList(request.name, items, isHorizontalImages = request.horizontalImages)
+            newHomePageResponse(listOf(list), hasNext = false)
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> =

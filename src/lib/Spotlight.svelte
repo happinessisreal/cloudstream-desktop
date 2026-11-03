@@ -9,6 +9,10 @@
     count,
     saved,
     busy,
+    plot,
+    tags,
+    score,
+    backdropUrl,
     ondetails,
     onsave,
     onprevious,
@@ -21,6 +25,10 @@
     count: number;
     saved: boolean;
     busy: boolean;
+    plot?: string;
+    tags?: string[];
+    score?: number;
+    backdropUrl?: string;
     ondetails: () => void;
     onsave: () => void;
     onprevious: () => void;
@@ -29,15 +37,16 @@
   let failed = $state(false);
   $effect(() => {
     item.posterUrl;
+    backdropUrl;
     failed = false;
   });
 </script>
 
 <section class="spotlight" aria-label="Featured title">
   <div class="spotlight-art" aria-hidden="true">
-    {#if item.posterUrl && !failed && !Object.keys(item.posterHeaders ?? {}).length}
+    {#if (backdropUrl || item.posterUrl) && !failed && !Object.keys(item.posterHeaders ?? {}).length}
       <img
-        src={item.posterUrl}
+        src={backdropUrl || item.posterUrl}
         alt=""
         onerror={() => (failed = true)}
         referrerpolicy="no-referrer"
@@ -51,8 +60,18 @@
     <div class="spotlight-meta">
       <span>{item.mediaType?.replace('TvSeries', 'TV series') ?? 'Video'}</span>{#if item.year}<span
           >{item.year}</span
-        >{/if}<span>{source}</span>
+        >{/if}{#if score !== undefined && score > 0}<span>★ {score.toFixed(1)}</span>{/if}<span>{source}</span>
     </div>
+    {#if tags && tags.length > 0}
+      <div class="spotlight-tags">
+        {#each tags.slice(0, 3) as tag}
+          <span class="tag-pill">{tag}</span>
+        {/each}
+      </div>
+    {/if}
+    {#if plot}
+      <p class="spotlight-plot">{plot}</p>
+    {/if}
     <div class="button-row">
       <button class="button primary" disabled={busy} onclick={ondetails}
         ><Info size={19} />More info</button

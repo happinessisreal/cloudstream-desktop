@@ -4,12 +4,19 @@
   let {
     item,
     index = 0,
+    orientation = 'vertical',
     onclick,
-  }: { item: MediaItem; index?: number; onclick: () => void } = $props();
+  }: {
+    item: MediaItem;
+    index?: number;
+    orientation?: 'horizontal' | 'vertical' | string;
+    onclick: () => void;
+  } = $props();
 </script>
 
 <button
   class="media-card"
+  class:horizontal={orientation === 'horizontal'}
   {onclick}
   aria-label={`Open ${item.name}`}
   style={`--card-hue:${220 + ((index * 19) % 45)}`}

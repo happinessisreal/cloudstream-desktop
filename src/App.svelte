@@ -52,6 +52,8 @@
     Heart,
     Bell,
     Circle,
+    Shuffle,
+    Sparkles,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -90,7 +92,7 @@
   let contentFilter = $state('All');
   let featuredIndex = $state(0);
   let expandedCategory = $state<number | null>(null);
-  let categoryPages = $state<Record<number, number>>({});
+  let categoryPages = $state<Record<string, number>>({});
   let posterDensity = $state<PosterDensity>(
     (localStorage.getItem('cloudstream.poster-density') as PosterDensity) === 'compact'
       ? 'compact'
@@ -322,6 +324,63 @@
     return list;
   });
 
+  const homePlanToWatchItems = $derived.by(() => {
+    return snapshot.library
+      .filter((s) => s.watchStatus === 'plan_to_watch')
+      .map((s) => s.item);
+  });
+
+  const homeFavoriteItems = $derived.by(() => {
+    return snapshot.library
+      .filter((s) => s.isFavorite)
+      .map((s) => s.item);
+  });
+
+  let spotlightDetails = $state<Details | null>(null);
+  let spotlightAbortController: AbortController | null = null;
+
+  $effect(() => {
+    const item = featuredItem;
+    spotlightAbortController?.abort();
+    spotlightDetails = null;
+    if (item && item.providerId && item.url) {
+      const controller = new AbortController();
+      spotlightAbortController = controller;
+      void (async () => {
+        try {
+          const d = await call<Details>(
+            'load_details',
+            { providerId: item.providerId, url: item.url },
+            { signal: controller.signal },
+          );
+          if (!controller.signal.aborted) {
+            spotlightDetails = d;
+          }
+        } catch {
+          // ignore background detail resolution failure
+        }
+      })();
+    }
+  });
+
+  function pickRandomSource() {
+    const candidates = providers.filter((p) => !p.disabled && p.hasMainPage);
+    if (!candidates.length) return;
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    void chooseProvider(chosen.id);
+  }
+
+  function pickRandomTitle() {
+    const candidates = home.rows.flatMap((r) => r.items);
+    if (candidates.length > 0) {
+      const item = candidates[Math.floor(Math.random() * candidates.length)];
+      void openItem(item);
+    } else if (snapshot.library.length > 0) {
+      const item = snapshot.library[Math.floor(Math.random() * snapshot.library.length)].item;
+      void openItem(item);
+    }
+  }
+
   function message(text: string) {
     notice = text;
     clearTimeout(toastTimer);
@@ -355,8 +414,23 @@
       posterDensity = snapshot.settings.global.appearance.posterDensity;
     }
     providers = await call<Provider[]>('list_providers');
-    if (!providers.some((p) => p.id === selectedProvider))
+    const savedProv =
+      snapshot.settings?.profiles?.[activeProfile]?.selectedProvider ||
+      (() => {
+        try {
+          return localStorage.getItem('cs_selected_provider_' + activeProfile);
+        } catch {
+          return null;
+        }
+      })() ||
+      '';
+    if (savedProv && providers.some((p) => p.id === savedProv)) {
+      selectedProvider = savedProv;
+    } else if (!selectedProvider && providers.length > 0) {
       selectedProvider = providers[0]?.id ?? '';
+    } else if (selectedProvider && !providers.some((p) => p.id === selectedProvider)) {
+      selectedProvider = providers[0]?.id ?? '';
+    }
     await loadSearchHistory();
     ready = true;
   }
@@ -372,11 +446,19 @@
       busy = '';
     }
   }
-  async function chooseProvider(id: string) {
+  async function chooseProvider(id: string, forceRefresh = false) {
     selectedProvider = id;
+    try {
+      localStorage.setItem('cs_selected_provider_' + activeProfile, id);
+      call('update_settings', {
+        patch: { selectedProvider: id },
+        profileId: activeProfile,
+      }).catch(() => {});
+    } catch {
+      // ignore
+    }
     searchActive = false;
     query = '';
-    home = { rows: [] };
     featuredIndex = 0;
     contentFilter = 'All';
     expandedCategory = null;
@@ -384,10 +466,19 @@
     ++searchVersion;
     const version = ++providerVersion;
     loadingContent = false;
-    if (!id || !providers.find((p) => p.id === id)?.hasMainPage) return;
-    loadingContent = true;
+    if (!id || !providers.find((p) => p.id === id)?.hasMainPage) {
+      home = { rows: [] };
+      return;
+    }
+    if (!home.rows.length || forceRefresh) {
+      loadingContent = true;
+    }
     try {
-      const result = await call<Home>('provider_home', { providerId: id, page: 1 });
+      const result = await call<Home>('provider_home', {
+        providerId: id,
+        page: 1,
+        forceRefresh,
+      });
       if (version === providerVersion) home = result;
     } catch (e) {
       if (version === providerVersion) showError(e);
@@ -417,6 +508,7 @@
     searchAbortController?.abort();
     detailsAbortController?.abort();
     resolveAbortController?.abort();
+    spotlightAbortController?.abort();
     page = next;
     searchView = false;
     details = null;
@@ -429,6 +521,7 @@
     searchAbortController?.abort();
     detailsAbortController?.abort();
     resolveAbortController?.abort();
+    spotlightAbortController?.abort();
     page = 'discover';
     details = null;
     searchView = true;
@@ -448,22 +541,29 @@
   }
   async function moreTitles(index: number) {
     await task('category', async () => {
-      const nextPage = (categoryPages[index] ?? 1) + 1;
+      const current = home.rows[index];
+      if (!current) return;
+      const rowKey = current.rowId || String(index);
+      const nextPage = (categoryPages[rowKey] ?? current.page ?? 1) + 1;
+      const section = current.sectionIndex ?? index;
       const result = await call<Home>('provider_home', {
         providerId: selectedProvider,
         page: nextPage,
-        section: index,
+        section,
       });
-      const next = result.rows[0];
-      const current = home.rows[index];
+      categoryPages[rowKey] = nextPage;
+      const next =
+        result.rows.find((r) => r.rowId === current.rowId) ??
+        result.rows.find((r) => r.name === current.name) ??
+        result.rows[0];
       const existing = new Set(current.items.map((item) => item.url));
       const added = next?.items.filter((item) => !existing.has(item.url)) ?? [];
       home.rows[index] = {
         ...current,
         items: [...current.items, ...added],
         hasNext: added.length > 0 && Boolean(next?.hasNext),
+        page: nextPage,
       };
-      categoryPages[index] = nextPage;
     });
   }
   async function addSample() {
@@ -792,6 +892,7 @@
 
   async function runSearch(event?: SubmitEvent, targetProviderId?: string, nextPage = 1) {
     event?.preventDefault();
+    spotlightAbortController?.abort();
     if (page === 'extensions') {
       repoFilter = query.trim();
       extensionTab = 'browse';
@@ -1520,17 +1621,32 @@
               aria-label="Your source"
               value={selectedProvider}
               onchange={(event) => chooseProvider(event.currentTarget.value)}
-              >{#each providers as source}<option value={source.id}>{source.name}</option
+              ><option value="">No source selected</option>
+              {#each providers as source}<option value={source.id}>{source.name}</option
                 >{/each}</select
             >
           </div>
         </div>{/if}
       <button
         class="icon-button"
+        aria-label="Random source"
+        title="Pick random source"
+        disabled={!providers.length}
+        onclick={pickRandomSource}><Shuffle size={18} /></button
+      >
+      <button
+        class="icon-button"
+        aria-label="Random title"
+        title="Pick random title"
+        disabled={!home.rows.some((r) => r.items.length) && !snapshot.library.length}
+        onclick={pickRandomTitle}><Sparkles size={18} /></button
+      >
+      <button
+        class="icon-button"
         aria-label="Refresh source"
         title="Refresh source"
         disabled={!selectedProvider || loadingContent}
-        onclick={() => chooseProvider(selectedProvider)}><RefreshCw size={19} /></button
+        onclick={() => chooseProvider(selectedProvider, true)}><RefreshCw size={19} /></button
       >
       <button
         class="icon-button"
@@ -1993,6 +2109,10 @@
                     saved.item.providerId === featuredItem.providerId,
                 )}
                 busy={!!busy}
+                plot={spotlightDetails?.plot}
+                tags={spotlightDetails?.tags}
+                score={spotlightDetails?.item?.rating ?? featuredItem.rating}
+                backdropUrl={spotlightDetails?.backgroundPosterUrl}
                 ondetails={() => openItem(featuredItem)}
                 onsave={() => saveItem(featuredItem)}
                 onprevious={() =>
@@ -2001,29 +2121,87 @@
                 onnext={() => (featuredIndex = (featuredIndex + 1) % featuredItems.length)}
               />{/if}
             <div id="home-catalog">
+              {#if snapshot.history.length > 0}
+                <section class="catalog-section" aria-label="Continue watching">
+                  <div class="section-title">
+                    <h2>Continue watching</h2>
+                    <div class="rail-actions">
+                      <button class="button secondary small" onclick={() => (modal = 'clearHistory')}>Clear all</button>
+                    </div>
+                  </div>
+                  <div class="media-rail">
+                    {#each snapshot.history as watch}
+                      <div class="history-card-wrapper" style="flex: 0 0 240px; width: 240px;">
+                        <button class="history-card" onclick={() => resume(watch)}>
+                          <span class="history-play"><Play fill="currentColor" size={20} /></span>
+                          <div>
+                            <strong>{watch.item.name}</strong>
+                            <span>{formatTime(watch.position)}{watch.duration ? ` / ${formatTime(watch.duration)}` : ''}</span>
+                            <div class="progress-track">
+                              <i style={`width:${watch.duration ? Math.min(100, (watch.position / watch.duration) * 100) : 0}%`}></i>
+                            </div>
+                          </div>
+                        </button>
+                        <button class="history-remove-btn" title="Remove" onclick={() => removeHistoryItem(watch.id)}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    {/each}
+                  </div>
+                </section>
+              {/if}
+
+              {#if homePlanToWatchItems.length > 0}
+                <MediaRail
+                  title="Plan to watch"
+                  items={homePlanToWatchItems}
+                  onopen={openItem}
+                  onexpand={() => { page = 'library'; libraryTab = 'plan_to_watch'; }}
+                />
+              {/if}
+
+              {#if homeFavoriteItems.length > 0}
+                <MediaRail
+                  title="Favorites"
+                  items={homeFavoriteItems}
+                  onopen={openItem}
+                  onexpand={() => { page = 'library'; libraryTab = 'favorites'; }}
+                />
+              {/if}
+
               {#each home.rows as row, i}{#if row.items.some(matchesFilter)}<MediaRail
                     title={row.name}
                     items={row.items.filter(matchesFilter)}
+                    orientation={row.orientation === 'horizontal' ? 'horizontal' : 'vertical'}
                     onopen={openItem}
                     onexpand={() => (expandedCategory = i)}
                   />{/if}{/each}
             </div>
-            {#if !featuredItems.length}<div class="empty-state">
+            {#if !featuredItems.length && !snapshot.history.length && !homePlanToWatchItems.length && !homeFavoriteItems.length}<div class="empty-state">
                 <Film size={42} strokeWidth={1.3} />
-                <h3>
-                  {contentFilter === 'All'
-                    ? 'Nothing to show yet'
-                    : `No ${contentFilter.toLowerCase()} in this selection`}
-                </h3>
-                <p>
-                  {contentFilter === 'All'
-                    ? 'Try searching this source or loading another category.'
-                    : 'Choose another filter or load more categories from this source.'}
-                </p>
-                {#if contentFilter !== 'All'}<button
-                    class="button secondary"
-                    onclick={() => (contentFilter = 'All')}>Show all titles</button
-                  >{/if}
+                {#if !selectedProvider}
+                  <h3>No source selected</h3>
+                  <p>Choose a connected source or pick one randomly to start browsing.</p>
+                  <div class="button-row">
+                    <button class="button primary" onclick={pickRandomSource}><Shuffle size={16} />Random source</button>
+                    <button class="button secondary" onclick={() => navigate('extensions')}><Plus size={16} />Browse sources</button>
+                  </div>
+                {:else}
+                  <h3>
+                    {contentFilter === 'All'
+                      ? 'Nothing to show yet'
+                      : `No ${contentFilter.toLowerCase()} in this selection`}
+                  </h3>
+                  <p>
+                    {contentFilter === 'All'
+                      ? 'Try searching this source or loading another category.'
+                      : 'Choose another filter or load more categories from this source.'}
+                  </p>
+                  {#if contentFilter !== 'All'}<button
+                      class="button secondary"
+                      onclick={() => (contentFilter = 'All')}>Show all titles</button
+                    >{/if}
+                {/if}
               </div>{/if}
             {#if home.hasMoreSections}<button
                 class="button secondary load-more"

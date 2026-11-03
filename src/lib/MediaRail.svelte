@@ -6,11 +6,13 @@
   let {
     title,
     items,
+    orientation = 'vertical',
     onopen,
     onexpand,
   }: {
     title: string;
     items: MediaItem[];
+    orientation?: 'horizontal' | 'vertical' | string;
     onopen: (item: MediaItem) => void;
     onexpand: () => void;
   } = $props();
@@ -59,7 +61,7 @@
       >
     </div>
   </div>
-  <div class="media-rail" bind:this={rail} onscroll={measure}>
-    {#each items as item, i}<MediaCard {item} index={i} onclick={() => onopen(item)} />{/each}
+  <div class="media-rail" class:horizontal={orientation === 'horizontal'} bind:this={rail} onscroll={measure}>
+    {#each items as item, i}<MediaCard {item} {orientation} index={i} onclick={() => onopen(item)} />{/each}
   </div>
 </section>

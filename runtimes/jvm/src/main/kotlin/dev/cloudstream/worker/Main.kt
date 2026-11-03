@@ -169,7 +169,8 @@ private fun getCappedTimeout(desired: Long?, defaultMs: Long = 20_000L): Long {
 }
 
 private suspend fun executeGetMainPage(api: MainAPI, page: Int, index: Int): Map<String, Any?> {
-    val rows = api.mainPage.drop(index).take(1).flatMap { section ->
+    val sections = if (api.mainPage.isNotEmpty()) api.mainPage else listOf(MainPageData(api.name, "", false))
+    val rows = sections.drop(index).take(1).flatMap { section ->
         val request = MainPageRequest(section.name, section.data, section.horizontalImages)
         val result = withTimeout(getCappedTimeout(api.getMainPageTimeoutMs, 20_000L)) {
             api.getMainPage(page, request)
@@ -182,6 +183,9 @@ private suspend fun executeGetMainPage(api: MainAPI, page: Int, index: Int): Map
                     "horizontalImages" to list.isHorizontalImages,
                     "orientation" to if (list.isHorizontalImages) "horizontal" else "vertical",
                     "rowId" to "${section.name}::$itemIdx::${list.name}",
+                    "sectionIndex" to index,
+                    "listIndex" to itemIdx,
+                    "page" to page,
                     "items" to list.list.map { mapSearchItem(api, it) },
                     "hasNext" to (result?.hasNext ?: false)
                 )
@@ -193,13 +197,16 @@ private suspend fun executeGetMainPage(api: MainAPI, page: Int, index: Int): Map
                     "horizontalImages" to section.horizontalImages,
                     "orientation" to if (section.horizontalImages) "horizontal" else "vertical",
                     "rowId" to "${section.name}::0",
+                    "sectionIndex" to index,
+                    "listIndex" to 0,
+                    "page" to page,
                     "items" to emptyList<Any>(),
                     "hasNext" to false
                 )
             )
         }
     }
-    return mapOf("rows" to rows, "nextSection" to index + 1, "hasMoreSections" to (index + 1 < api.mainPage.size))
+    return mapOf("rows" to rows, "nextSection" to index + 1, "hasMoreSections" to (index + 1 < sections.size))
 }
 
 private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?): Any? = when(method) {

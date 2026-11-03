@@ -107,8 +107,57 @@ async function desktopFixture(page: Page, unsupported = false) {
         case 'install_sample':
           state.installed = [plugin];
           return plugin;
-        case 'provider_home':
-          return { rows: [{ name: 'Open movies', items: [item], hasNext: false }] };
+        case 'provider_home': {
+          const section = args.section || 0;
+          if (section === 0) {
+            return {
+              rows: [{
+                name: 'Open movies',
+                rowId: 'Open movies::0::Open movies',
+                sectionIndex: 0,
+                listIndex: 0,
+                page: args.page || 1,
+                horizontalImages: true,
+                orientation: 'horizontal',
+                items: [item],
+                hasNext: false,
+              }],
+              nextSection: 1,
+              hasMoreSections: true,
+              cached: false,
+            };
+          } else {
+            return {
+              rows: [
+                {
+                  name: 'Popular open titles',
+                  rowId: 'Community picks::0::Popular open titles',
+                  sectionIndex: 1,
+                  listIndex: 0,
+                  page: args.page || 1,
+                  horizontalImages: false,
+                  orientation: 'vertical',
+                  items: [item],
+                  hasNext: args.page === 1,
+                },
+                {
+                  name: 'Classic animations',
+                  rowId: 'Community picks::1::Classic animations',
+                  sectionIndex: 1,
+                  listIndex: 1,
+                  page: args.page || 1,
+                  horizontalImages: false,
+                  orientation: 'vertical',
+                  items: [{ ...item, name: 'Sintel' }],
+                  hasNext: false,
+                },
+              ],
+              nextSection: 2,
+              hasMoreSections: false,
+              cached: false,
+            };
+          }
+        }
         case 'search':
           if (args.providerId === 'failing:Error Source') {
             throw new Error('Connection refused by provider host');
@@ -385,6 +434,11 @@ async function desktopFixture(page: Page, unsupported = false) {
           if (patch.appearance?.searchSuggestions !== undefined) {
             state.settings.global.appearance.searchSuggestions = patch.appearance.searchSuggestions;
           }
+          if (patch.selectedProvider !== undefined) {
+            state.settings.profiles = state.settings.profiles || {};
+            state.settings.profiles['default'] = state.settings.profiles['default'] || {};
+            state.settings.profiles['default'].selectedProvider = patch.selectedProvider;
+          }
           state.settings.revision = (state.settings.revision || 1) + 1;
           return structuredClone(state.settings);
         }
@@ -545,7 +599,9 @@ test('poster density changes browsing layout and persists', async ({ page }) => 
     'true',
   );
   const calls = await page.evaluate(() => (window as any).__calls);
-  const updateCall = calls.find((c: any) => c.command === 'update_settings');
+  const updateCall = calls.find(
+    (c: any) => c.command === 'update_settings' && c.args?.patch?.appearance?.posterDensity,
+  );
   expect(updateCall).toBeDefined();
   expect(updateCall.args.patch.appearance.posterDensity).toBe('compact');
   await page.getByRole('button', { name: 'Home', exact: true }).click();
@@ -870,4 +926,42 @@ test('library watch statuses, favorites, tab filtering, episode watched toggles,
   // Confirm clear
   await page.getByRole('button', { name: 'Clear "watching"', exact: true }).click();
   await expect(page.getByText('Nothing in this list yet.')).toBeVisible();
+});
+
+test('home multi-row provider, category expansion, random actions, and library rails', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+
+  // 1. Verify spotlight and first row ("Open movies") with horizontal rail
+  await expect(page.getByRole('heading', { name: 'Open movies', level: 2 })).toBeVisible();
+  const horizontalRail = page.locator('.media-rail.horizontal');
+  await expect(horizontalRail).toBeVisible();
+
+  // 2. Load more categories -> Section 1 returns 2 separate named rows
+  await page.getByRole('button', { name: 'More categories' }).click();
+  await expect(page.getByRole('heading', { name: 'Popular open titles', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Classic animations', level: 2 })).toBeVisible();
+
+  // 3. Category expansion ("See all") on "Popular open titles"
+  const seeAllBtns = page.getByRole('button', { name: 'See all' });
+  await seeAllBtns.nth(1).click();
+  await expect(page.getByRole('button', { name: 'Back to home' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to home' }).click();
+
+  // 4. Test "Random title" button
+  await page.getByRole('button', { name: 'Random title', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Big Buck Bunny · Trailer|Sintel/, level: 1 })).toBeVisible();
+
+  // 5. Save title to library and set Favorite
+  await page.getByRole('button', { name: 'Save to library', exact: true }).click();
+  await page.getByRole('button', { name: 'Favorite', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Favorited', exact: true })).toBeVisible();
+
+  // 6. Navigate back to Home and verify "Favorites" personalized rail appears
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Favorites', level: 2 })).toBeVisible();
+
+  // 7. Verify source selection persistence in settings
+  const calls = await page.evaluate(() => (window as any).__calls);
+  expect(calls.some((c: any) => c.command === 'update_settings' && c.args.patch?.selectedProvider)).toBe(true);
 });

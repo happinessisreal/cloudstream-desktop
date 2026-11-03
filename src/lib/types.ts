@@ -398,6 +398,7 @@ export interface GlobalSettings {
 
 export interface ProfileSettings {
   appearance?: AppearanceSettings;
+  selectedProvider?: string;
   [key: string]: unknown;
 }
 
@@ -419,6 +420,9 @@ export interface HomeRow {
   items: MediaItem[];
   hasNext: boolean;
   rowId?: string;
+  sectionIndex?: number;
+  listIndex?: number;
+  page?: number;
   orientation?: 'horizontal' | 'vertical' | string;
   horizontalImages?: boolean;
   [key: string]: unknown;
@@ -428,6 +432,7 @@ export interface Home {
   rows: HomeRow[];
   nextSection?: number;
   hasMoreSections?: boolean;
+  cached?: boolean;
   [key: string]: unknown;
 }
 

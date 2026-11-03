@@ -809,6 +809,33 @@ main {
   color: #acacbd;
   margin-right: 12px;
 }
+.spotlight-plot {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c9cad9;
+  margin-top: 14px;
+  max-width: 620px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.spotlight-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.media-card.horizontal,
+.media-rail.horizontal > .media-card {
+  flex: 0 0 calc(var(--poster-width) * 1.55);
+  width: calc(var(--poster-width) * 1.55);
+  max-width: 320px;
+}
+.media-card.horizontal .poster,
+.media-rail.horizontal .poster {
+  aspect-ratio: 16 / 9;
+}
 .spotlight .button-row {
   margin-top: 25px;
 }

@@ -164,5 +164,30 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Playwright UI tests: `npm run test:ui` (19 passed, including new test for library statuses, favorites, tab filtering, episode watched toggles, and bulk clear).
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
 
+### [T09] Home parity, category fidelity and caching
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Updated worker `executeGetMainPage` in `Main.kt` to preserve `sectionIndex`, `listIndex`, `rowId`, `page`, and each list's `orientation` (`horizontal` / `vertical`) and `horizontalImages` without flattening multiple `HomePageList`s into a single requested category. Preserved section cursors and row page cursors independently. Enhanced `BlenderFilms` sample provider with multi-row fixtures (Section 0 with horizontal open movies and Section 1 with two distinct vertical lists).
+  2. Implemented bounded TTL cache (10 minutes, 50-entry cap with LRU eviction) in `App` (`crates/core/src/lib.rs`) keyed by provider ID, package hash, section, page, and language. Added `force_refresh` support, source cache isolation, and cache invalidation on provider enable/disable, clone changes, and extension installations/updates/removals. Unresolved errors are never cached as empty success.
+  3. Added `selected_provider` persistence to `ProfileSettings` in `crates/core/src/models.rs`, surviving application restarts.
+  4. Exposed updated `provider_home` with `force_refresh` parameter in Tauri commands (`src-tauri/src/main.rs`).
+  5. Built rich UI features in `src/App.svelte`, `src/lib/MediaRail.svelte`, `src/lib/Spotlight.svelte`, and `src/style.css`:
+     - Supported list orientation in `MediaRail` and `MediaCard` (horizontal 16:9 banner cards vs 2:3 vertical poster cards).
+     - Spotlight background enrichment: asynchronously fetches `load_details` in background to populate synopsis plot, genres/tags, rating score, and high-res backdrop art without blocking rail rendering.
+     - Search isolation: opening search or submitting queries immediately aborts background spotlight detail resolution.
+     - Source selector parity: added "No source selected" option, "Random source" action, "Random title" action, and force-refresh button.
+     - Personalized library rails on Home: Continue Watching rail (with per-item removal and clear all confirmation), Plan to Watch rail, and Favorites rail that reactively update on library/status changes.
+- **Validation:**
+  - Rust tests: `cargo test --test home_and_caching` (5 passed: multi-row provider retaining named lists without flattening, caching and source isolation, cache invalidation on source/extension mutations, unresolved errors never cached, and selected provider surviving restart).
+  - All core tests: `cargo test -p cloudstream-core` (56 passed, 1 ignored).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Production frontend build: `npm run build` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (20 passed, including test for multi-row provider, category expansion, random actions, and library rails).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
 ## Next Ready Tasks
-- **[T09]** Home parity, category fidelity and caching (Depends on: T03, T04, T10)
+- **[T11]** Local profiles, startup selection and access locks (Depends on: T01, T02, T10)
+- **[T12]** Rich details and episode browser (Depends on: T03, T10)
+- **[T14]** Authoritative mpv session state and events (Depends on: T02, T03)

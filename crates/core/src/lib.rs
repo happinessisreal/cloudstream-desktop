@@ -13,6 +13,21 @@ use store::Store;
 use tokio::sync::Mutex;
 use worker::{Worker, WorkerConfig};
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HomeCacheKey {
+    pub provider_id: String,
+    pub package_hash: String,
+    pub section: u32,
+    pub page: u32,
+    pub lang: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct HomeCacheEntry {
+    pub data: serde_json::Value,
+    pub cached_at: std::time::Instant,
+}
+
 pub struct App {
     pub store: Store,
     pub repositories: RepositoryManager,
@@ -22,6 +37,7 @@ pub struct App {
     pub data: PathBuf,
     pub mutation: Mutex<()>,
     pub client_requests: Mutex<std::collections::HashMap<String, u64>>,
+    pub home_cache: std::sync::Mutex<std::collections::HashMap<HomeCacheKey, HomeCacheEntry>>,
 }
 impl App {
     pub fn open(data: PathBuf, resources: PathBuf) -> Result<Arc<Self>> {
@@ -46,6 +62,7 @@ impl App {
             data,
             mutation: Mutex::new(()),
             client_requests: Mutex::new(std::collections::HashMap::new()),
+            home_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         }))
     }
     pub async fn status(&self) -> RuntimeStatus {
@@ -122,13 +139,103 @@ impl App {
         Ok(list)
     }
     pub fn set_provider_enabled(&self, provider_id: &str, enabled: bool) -> Result<()> {
+        self.invalidate_home_cache(Some(provider_id));
         self.store.set_provider_disabled(provider_id, !enabled)
     }
     pub fn configure_provider_clone(&self, clone: ProviderCloneConfig) -> Result<()> {
+        self.invalidate_home_cache(Some(&clone.id));
         self.store.save_provider_clone(&clone)
     }
     pub fn delete_provider_clone(&self, clone_id: &str) -> Result<()> {
+        self.invalidate_home_cache(Some(clone_id));
         self.store.delete_provider_clone(clone_id)
+    }
+    pub async fn provider_home(
+        &self,
+        provider_id: &str,
+        page: u32,
+        section: u32,
+        force_refresh: bool,
+        request_id: Option<&str>,
+    ) -> Result<Value> {
+        let providers = self.providers().await.unwrap_or_default();
+        let (package_hash, lang) = if let Some(p) = providers.iter().find(|p| p.id == provider_id) {
+            let installed = self.store.installed().unwrap_or_default();
+            let hash = installed
+                .iter()
+                .find(|pi| pi.id == p.plugin_id)
+                .map(|pi| pi.sha256.clone())
+                .unwrap_or_default();
+            (hash, p.lang.clone())
+        } else {
+            (String::new(), "en".to_string())
+        };
+
+        let key = HomeCacheKey {
+            provider_id: provider_id.to_string(),
+            package_hash,
+            section,
+            page,
+            lang,
+        };
+
+        const TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
+        if !force_refresh {
+            let cache = self.home_cache.lock().unwrap();
+            if let Some(entry) = cache.get(&key) {
+                if entry.cached_at.elapsed() < TTL {
+                    let mut data = entry.data.clone();
+                    if let Some(obj) = data.as_object_mut() {
+                        obj.insert("cached".to_string(), Value::Bool(true));
+                    }
+                    return Ok(data);
+                }
+            }
+        }
+
+        let res = self
+            .call_cancellable(
+                request_id,
+                "getMainPage",
+                json!({"providerId": provider_id, "page": page, "section": section}),
+            )
+            .await?;
+
+        // Avoid caching unresolved errors as empty success
+        if res.get("error").is_none() && res.get("rows").is_some() {
+            let mut cache = self.home_cache.lock().unwrap();
+            if cache.len() >= 50 {
+                let now = std::time::Instant::now();
+                cache.retain(|_, v| now.duration_since(v.cached_at) < TTL);
+                if cache.len() >= 50 {
+                    if let Some(oldest_key) = cache.keys().next().cloned() {
+                        cache.remove(&oldest_key);
+                    }
+                }
+            }
+            cache.insert(
+                key,
+                HomeCacheEntry {
+                    data: res.clone(),
+                    cached_at: std::time::Instant::now(),
+                },
+            );
+        }
+
+        let mut data = res;
+        if let Some(obj) = data.as_object_mut() {
+            obj.insert("cached".to_string(), Value::Bool(false));
+        }
+        Ok(data)
+    }
+    pub fn invalidate_home_cache(&self, provider_id: Option<&str>) {
+        let mut cache = self.home_cache.lock().unwrap();
+        if let Some(pid) = provider_id {
+            cache.retain(|k, _| k.provider_id != pid);
+        } else {
+            cache.clear();
+        }
     }
     pub async fn add_repository(&self, input: &str) -> Result<Repository> {
         let _guard = self.mutation.lock().await;
@@ -631,6 +738,7 @@ impl App {
             self.worker.stop().await;
             return Err(error);
         }
+        self.invalidate_home_cache(None);
         Ok(())
     }
     pub async fn install_sample(&self) -> Result<InstalledPlugin> {
@@ -677,6 +785,7 @@ impl App {
         if !self.store.installed()?.iter().any(|p| p.id == id) {
             bail!("Extension is not installed")
         }
+        self.invalidate_home_cache(None);
         self.worker.stop().await;
         self.store.remove("plugin", id)?;
         // Retain content-addressed packages as a local recovery cache.
@@ -684,6 +793,7 @@ impl App {
     }
     pub async fn remove_repository(&self, url: &str) -> Result<()> {
         let _guard = self.mutation.lock().await;
+        self.invalidate_home_cache(None);
         self.worker.stop().await;
         for plugin in self
             .store

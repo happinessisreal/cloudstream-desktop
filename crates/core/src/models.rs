@@ -823,6 +823,8 @@ impl Default for GlobalSettings {
 pub struct ProfileSettings {
     #[serde(default)]
     pub appearance: Option<AppearanceSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_provider: Option<String>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
