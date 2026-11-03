@@ -306,10 +306,37 @@ export interface Links {
 
 export type ResolvedLinks = Links;
 
+export type WatchStatus =
+  | 'watching'
+  | 'completed'
+  | 'on_hold'
+  | 'dropped'
+  | 'plan_to_watch'
+  | 'none';
+
 export interface LibraryItem {
   id: string;
   item: MediaItem;
   savedAt: number;
+  watchStatus?: WatchStatus;
+  isFavorite?: boolean;
+  isSubscribed?: boolean;
+  profileId?: string;
+  updatedAt?: number;
+  [key: string]: unknown;
+}
+
+export interface WatchProgress {
+  profileId: string;
+  mediaId: string;
+  episodeId: string;
+  positionSeconds: number;
+  durationSeconds?: number;
+  updatedAtMs: number;
+  isWatched: boolean;
+  watchedOverride?: boolean;
+  completionReason?: string;
+  [key: string]: unknown;
 }
 
 export interface WatchEntry {

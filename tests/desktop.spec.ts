@@ -183,12 +183,104 @@ async function desktopFixture(page: Page, unsupported = false) {
             ],
             subtitles: [],
           };
-        case 'bookmark':
-          state.library.push({ id: 'saved', item: args.item, savedAt: 1 });
-          return state.library[0];
+        case 'bookmark': {
+          const entry = { id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: false, isSubscribed: false };
+          state.library.push(entry);
+          return entry;
+        }
         case 'remove_bookmark':
           state.library = [];
           return null;
+        case 'set_library_status': {
+          const entry = state.library.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
+          if (entry) {
+            entry.watchStatus = args.status;
+          } else {
+            state.library.push({ id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: args.status, isFavorite: false, isSubscribed: false });
+          }
+          return null;
+        }
+        case 'set_library_favorite': {
+          const entry = state.library.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
+          if (entry) {
+            entry.isFavorite = args.isFavorite;
+          } else {
+            state.library.push({ id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: args.isFavorite, isSubscribed: false });
+          }
+          return null;
+        }
+        case 'set_library_subscribed': {
+          const entry = state.library.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
+          if (entry) {
+            entry.isSubscribed = args.isSubscribed;
+          } else {
+            state.library.push({ id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: false, isSubscribed: args.isSubscribed });
+          }
+          return null;
+        }
+        case 'remove_library_item': {
+          state.library = state.library.filter((l: any) => l.id !== args.id);
+          return null;
+        }
+        case 'clear_library': {
+          if (args.status) {
+            state.library = state.library.filter((l: any) => l.watchStatus !== args.status);
+          } else {
+            state.library = [];
+          }
+          return null;
+        }
+        case 'remove_history_item': {
+          state.history = state.history.filter((h: any) => h.id !== args.id);
+          return null;
+        }
+        case 'clear_history': {
+          state.history = [];
+          return null;
+        }
+        case 'get_media_watch_progress':
+          return (state as any).progresses || [];
+        case 'mark_episode_watched': {
+          (state as any).progresses = (state as any).progresses || [];
+          const idx = (state as any).progresses.findIndex((p: any) => p.episodeId === args.episodeId);
+          if (idx >= 0) {
+            (state as any).progresses[idx].isWatched = args.isWatched;
+            (state as any).progresses[idx].watchedOverride = args.isWatched;
+          } else {
+            (state as any).progresses.push({
+              profileId: 'default',
+              mediaId: args.mediaId,
+              episodeId: args.episodeId,
+              positionSeconds: 0,
+              updatedAtMs: Date.now(),
+              isWatched: args.isWatched,
+              watchedOverride: args.isWatched,
+            });
+          }
+          return null;
+        }
+        case 'mark_episodes_up_to': {
+          (state as any).progresses = (state as any).progresses || [];
+          for (const ep of args.episodes || []) {
+            const epId = ep.name || 'ep';
+            const idx = (state as any).progresses.findIndex((p: any) => p.episodeId === epId);
+            if (idx >= 0) {
+              (state as any).progresses[idx].isWatched = true;
+              (state as any).progresses[idx].watchedOverride = true;
+            } else {
+              (state as any).progresses.push({
+                profileId: 'default',
+                mediaId: args.mediaId,
+                episodeId: epId,
+                positionSeconds: 0,
+                updatedAtMs: Date.now(),
+                isWatched: true,
+                watchedOverride: true,
+              });
+            }
+          }
+          return null;
+        }
         case 'play':
           return null;
         case 'player_action':
@@ -713,4 +805,69 @@ test('search history and suggestions respect settings opt-out', async ({ page })
   await page.waitForTimeout(350);
   const calls = await page.evaluate(() => (window as any).__calls);
   expect(calls.some((c: any) => c.command === 'search_suggestions')).toBe(false);
+});
+
+test('library watch statuses, favorites, tab filtering, episode watched toggles, and bulk clear', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+
+  // Search and open title
+  const searchInput = page.getByLabel('Search your selected source');
+  await searchInput.fill('Bunny');
+  await searchInput.press('Enter');
+  await page.getByRole('button', { name: /Big Buck Bunny · Trailer/ }).click();
+
+  // 1. Save to library, set status to Watching, Favorite, and Subscribe
+  await page.getByRole('button', { name: 'Save to library', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Saved to library', exact: true })).toBeVisible();
+
+  // Change watch status to Watching
+  const statusSelect = page.locator('.detail-library-controls select');
+  await statusSelect.selectOption('watching');
+
+  // Toggle favorite and subscribed
+  await page.getByRole('button', { name: 'Favorite', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Favorited', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Subscribe', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Subscribed', exact: true })).toBeVisible();
+
+  // 2. Mark episode watched
+  const watchedToggle = page.locator('.watched-toggle-btn').first();
+  await watchedToggle.click();
+  await expect(watchedToggle).toHaveClass(/is-watched/);
+
+  // 3. Navigate to My library
+  await page.getByRole('button', { name: /My library/ }).click();
+  await expect(page.getByRole('heading', { name: 'My library' })).toBeVisible();
+
+  // Verify item visible in 'All' tab
+  await expect(page.getByRole('button', { name: /Big Buck Bunny · Trailer/ })).toBeVisible();
+
+  // Verify status badge and favorite/subscribed badges are rendered
+  await expect(page.locator('.status-badge.watching')).toBeVisible();
+  await expect(page.locator('.icon-badge.fav')).toBeVisible();
+  await expect(page.locator('.icon-badge.sub')).toBeVisible();
+
+  // Switch tab to 'Watching'
+  await page.getByRole('button', { name: 'Watching', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Big Buck Bunny · Trailer/ })).toBeVisible();
+
+  // Switch tab to 'Favorites'
+  await page.getByRole('button', { name: 'Favorites', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Big Buck Bunny · Trailer/ })).toBeVisible();
+
+  // Switch tab to 'Completed' (should be empty)
+  await page.getByRole('button', { name: 'Completed', exact: true }).click();
+  await expect(page.getByText('Nothing in this list yet.')).toBeVisible();
+
+  // Switch back to 'Watching' and test Clear list modal
+  await page.getByRole('button', { name: 'Watching', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear list', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Clear library' })).toBeVisible();
+
+  // Confirm clear
+  await page.getByRole('button', { name: 'Clear "watching"', exact: true }).click();
+  await expect(page.getByText('Nothing in this list yet.')).toBeVisible();
 });

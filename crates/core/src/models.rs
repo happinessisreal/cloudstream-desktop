@@ -75,6 +75,8 @@ pub struct WatchProgress {
     #[serde(default)]
     pub is_watched: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watched_override: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_reason: Option<String>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
@@ -681,12 +683,60 @@ pub struct HomeResponse {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchStatus {
+    Watching,
+    Completed,
+    OnHold,
+    Dropped,
+    PlanToWatch,
+    #[default]
+    None,
+}
+
+impl WatchStatus {
+    pub fn to_android_int(&self) -> i32 {
+        match self {
+            WatchStatus::Watching => 0,
+            WatchStatus::Completed => 1,
+            WatchStatus::OnHold => 2,
+            WatchStatus::Dropped => 3,
+            WatchStatus::PlanToWatch => 4,
+            WatchStatus::None => 5,
+        }
+    }
+
+    pub fn from_android_int(val: i32) -> Self {
+        match val {
+            0 => WatchStatus::Watching,
+            1 => WatchStatus::Completed,
+            2 => WatchStatus::OnHold,
+            3 => WatchStatus::Dropped,
+            4 => WatchStatus::PlanToWatch,
+            _ => WatchStatus::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryItem {
     pub id: String,
     pub item: MediaItem,
     pub saved_at: u64,
+    #[serde(default)]
+    pub watch_status: WatchStatus,
+    #[serde(default)]
+    pub is_favorite: bool,
+    #[serde(default)]
+    pub is_subscribed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<u64>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

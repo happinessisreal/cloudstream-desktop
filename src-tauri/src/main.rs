@@ -265,6 +265,80 @@ async fn remove_bookmark(app: State<'_, Backend>, id: String) -> Reply<()> {
     app.store.remove("library", &id).map_err(error)
 }
 #[tauri::command]
+async fn set_library_status(
+    app: State<'_, Backend>,
+    item: MediaItem,
+    status: WatchStatus,
+) -> Reply<LibraryItem> {
+    app.set_library_status(item, status).map_err(error)
+}
+#[tauri::command]
+async fn set_library_favorite(
+    app: State<'_, Backend>,
+    item: MediaItem,
+    is_favorite: bool,
+) -> Reply<LibraryItem> {
+    app.set_library_favorite(item, is_favorite).map_err(error)
+}
+#[tauri::command]
+async fn set_library_subscribed(
+    app: State<'_, Backend>,
+    item: MediaItem,
+    is_subscribed: bool,
+) -> Reply<LibraryItem> {
+    app.set_library_subscribed(item, is_subscribed).map_err(error)
+}
+#[tauri::command]
+async fn remove_library_item(app: State<'_, Backend>, id: String) -> Reply<()> {
+    app.remove_library_item(&id).map_err(error)
+}
+#[tauri::command]
+async fn clear_library(
+    app: State<'_, Backend>,
+    status: Option<WatchStatus>,
+) -> Reply<()> {
+    app.clear_library(status).map_err(error)
+}
+#[tauri::command]
+async fn remove_history_item(app: State<'_, Backend>, id: String) -> Reply<()> {
+    app.remove_history_item(&id).map_err(error)
+}
+#[tauri::command]
+async fn clear_history(app: State<'_, Backend>) -> Reply<()> {
+    app.clear_history().map_err(error)
+}
+#[tauri::command]
+async fn get_media_watch_progress(
+    app: State<'_, Backend>,
+    media_id: String,
+    profile_id: Option<String>,
+) -> Reply<Vec<WatchProgress>> {
+    app.get_media_watch_progress(&media_id, profile_id.as_deref())
+        .map_err(error)
+}
+#[tauri::command]
+async fn mark_episode_watched(
+    app: State<'_, Backend>,
+    media_id: String,
+    episode_id: String,
+    is_watched: bool,
+    profile_id: Option<String>,
+) -> Reply<WatchProgress> {
+    app.mark_episode_watched(&media_id, &episode_id, is_watched, profile_id.as_deref())
+        .map_err(error)
+}
+#[tauri::command]
+async fn mark_episodes_up_to(
+    app: State<'_, Backend>,
+    media_id: String,
+    target_episode_id: String,
+    episodes: Vec<Episode>,
+    profile_id: Option<String>,
+) -> Reply<Vec<WatchProgress>> {
+    app.mark_episodes_up_to(&media_id, &target_episode_id, &episodes, profile_id.as_deref())
+        .map_err(error)
+}
+#[tauri::command]
 async fn play(
     app: State<'_, Backend>,
     stream: Stream,
@@ -351,6 +425,16 @@ fn main() {
             cancel_request,
             bookmark,
             remove_bookmark,
+            set_library_status,
+            set_library_favorite,
+            set_library_subscribed,
+            remove_library_item,
+            clear_library,
+            remove_history_item,
+            clear_history,
+            get_media_watch_progress,
+            mark_episode_watched,
+            mark_episodes_up_to,
             play,
             player_action,
             get_settings,

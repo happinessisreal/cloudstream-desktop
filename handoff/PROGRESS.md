@@ -137,6 +137,32 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Playwright UI tests: `npm run test:ui` (18 passed, including federated search error isolation, view modes, per-source pagination, search history, and settings opt-out).
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
 
+### [T10] Local library statuses, favorites and watched episodes
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Enriched `LibraryItem` and added `WatchStatus` enum (`watching`, `completed`, `on_hold`, `dropped`, `plan_to_watch`, `none`) with serde snake_case mapping, retaining `is_favorite` and `is_subscribed` as independent attributes. Preserved legacy bookmarks as saved entries with default `none` status.
+  2. Transactional SQLite Migration 4 added `watched_override` column to `watch_progress` table. Updated `save_watch_progress` to preserve manual watched overrides on playback resume updates.
+  3. Added core store methods and Tauri commands:
+     - `set_library_status`, `set_library_favorite`, `set_library_subscribed`, `remove_library_item`, `clear_library` (with optional status-scoped clear that preserves favorited/subscribed items).
+     - `remove_history_item`, `clear_history`.
+     - `get_media_watch_progress`, `mark_episode_watched`, `mark_episodes_up_to` (filtering by dub group and sorting deterministically by season, episode, index).
+  4. Built rich UI in `src/App.svelte` and `src/style.css`:
+     - Library tabs: All, Watching, Plan to watch, Completed, On hold, Dropped, Favorites, Subscribed.
+     - Local title search filter and persistent sort controls (Recently updated, A-Z, Z-A, Release date, Score).
+     - Per-card status badges, favorite/subscribed icon indicators, and single-item remove button on hover.
+     - History section with per-item remove button and "Clear all" confirmation modal.
+     - Confirmation modals for clearing library (with tab-specific vs all options) and clearing watch history.
+     - Media details controls: Watch status dropdown, favorite toggle button, subscribe toggle button.
+     - Episode list controls: Mark watched/unwatched toggle button and "Mark up to here" button in deterministic order.
+- **Validation:**
+  - Rust tests: `cargo test --test library_and_statuses` (5 passed: status/fav/sub coexistence, legacy bookmarks preservation, watched overrides surviving resume updates, deterministic mark up to dub group ordering, and single removal & bulk clear).
+  - All core tests: `cargo test -p cloudstream-core` (51 passed, 1 ignored).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Production frontend build: `npm run build` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (19 passed, including new test for library statuses, favorites, tab filtering, episode watched toggles, and bulk clear).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
 ## Next Ready Tasks
-- **[T10]** Local library statuses, favorites and watched episodes (Depends on: T01, T02, T03)
 - **[T09]** Home parity, category fidelity and caching (Depends on: T03, T04, T10)

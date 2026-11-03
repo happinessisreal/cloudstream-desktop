@@ -49,6 +49,9 @@
     FlaskConical,
     CheckCheck,
     Clock,
+    Heart,
+    Bell,
+    Circle,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -77,6 +80,8 @@
     SearchHistoryEntry,
     SourceSearchState,
     SearchFilters,
+    WatchStatus,
+    WatchProgress,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -130,7 +135,15 @@
   let error = $state('');
   let notice = $state('');
   let modal = $state<
-    'repository' | 'direct' | 'rename' | 'localInstall' | 'clone' | 'test' | null
+    | 'repository'
+    | 'direct'
+    | 'rename'
+    | 'localInstall'
+    | 'clone'
+    | 'test'
+    | 'clearLibrary'
+    | 'clearHistory'
+    | null
   >(null);
   let repoUrl = $state('');
   let directUrl = $state('');
@@ -221,16 +234,93 @@
         return true;
       }),
   );
-  const detailSaved = $derived(
-    Boolean(
-      details &&
-      snapshot.library.some(
-        (saved) =>
-          saved.item.providerId === details?.item.providerId &&
-          saved.item.url === details?.item.url,
-      ),
-    ),
+  type LibraryTab =
+    | 'all'
+    | 'watching'
+    | 'plan_to_watch'
+    | 'completed'
+    | 'on_hold'
+    | 'dropped'
+    | 'favorites'
+    | 'subscribed';
+
+  let libraryTab = $state<LibraryTab>(
+    (typeof localStorage !== 'undefined' &&
+      (localStorage.getItem('cloudstream:library:tab') as LibraryTab)) ||
+      'all',
   );
+  let libraryQuery = $state('');
+  let librarySort = $state<string>(
+    (typeof localStorage !== 'undefined' &&
+      localStorage.getItem('cloudstream:library:sort')) ||
+      'updated',
+  );
+  let episodeProgresses = $state<WatchProgress[]>([]);
+
+  function onLibraryTabChange(tab: LibraryTab) {
+    libraryTab = tab;
+    try {
+      localStorage.setItem('cloudstream:library:tab', tab);
+    } catch {}
+  }
+
+  function onLibrarySortChange(sort: string) {
+    librarySort = sort;
+    try {
+      localStorage.setItem('cloudstream:library:sort', sort);
+    } catch {}
+  }
+
+  const detailLibraryItem = $derived(
+    details
+      ? snapshot.library.find(
+          (saved) =>
+            (saved.item.mediaId && details?.item.mediaId && saved.item.mediaId === details.item.mediaId) ||
+            (saved.item.providerId === details?.item.providerId && saved.item.url === details?.item.url),
+        ) ?? null
+      : null,
+  );
+  const detailSaved = $derived(Boolean(detailLibraryItem));
+  const detailStatus = $derived<WatchStatus>(detailLibraryItem?.watchStatus ?? 'none');
+  const detailFavorite = $derived<boolean>(Boolean(detailLibraryItem?.isFavorite));
+  const detailSubscribed = $derived<boolean>(Boolean(detailLibraryItem?.isSubscribed));
+
+  const libraryTabFiltered = $derived.by(() => {
+    return snapshot.library.filter((saved) => {
+      if (libraryTab === 'all') return true;
+      if (libraryTab === 'favorites') return Boolean(saved.isFavorite);
+      if (libraryTab === 'subscribed') return Boolean(saved.isSubscribed);
+      return saved.watchStatus === libraryTab;
+    });
+  });
+
+  const librarySearchFiltered = $derived.by(() => {
+    const q = libraryQuery.trim().toLowerCase();
+    if (!q) return libraryTabFiltered;
+    return libraryTabFiltered.filter((saved) =>
+      (saved.item.name ?? '').toLowerCase().includes(q),
+    );
+  });
+
+  const hasScoredItems = $derived.by(() => {
+    return snapshot.library.some((saved) => (saved.item.score ?? 0) > 0);
+  });
+
+  const sortedLibrary = $derived.by(() => {
+    const list = [...librarySearchFiltered];
+    if (librarySort === 'updated') {
+      list.sort((a, b) => (b.updatedAt ?? b.savedAt) - (a.updatedAt ?? a.savedAt));
+    } else if (librarySort === 'alpha_asc') {
+      list.sort((a, b) => (a.item.name ?? '').localeCompare(b.item.name ?? ''));
+    } else if (librarySort === 'alpha_desc') {
+      list.sort((a, b) => (b.item.name ?? '').localeCompare(a.item.name ?? ''));
+    } else if (librarySort === 'release_date') {
+      list.sort((a, b) => (b.item.year ?? 0) - (a.item.year ?? 0));
+    } else if (librarySort === 'score') {
+      list.sort((a, b) => (b.item.score ?? 0) - (a.item.score ?? 0));
+    }
+    return list;
+  });
 
   function message(text: string) {
     notice = text;
@@ -908,11 +998,15 @@
       details = null;
       links = null;
       selectedEpisode = null;
+      episodeProgresses = [];
       details = await call<Details>(
         'load_details',
         { providerId: item.providerId, url: item.url },
         { signal: currentSignal },
       );
+      if (details?.item) {
+        await loadEpisodeProgresses();
+      }
     });
   }
   async function resolve(episode: Episode) {
@@ -969,17 +1063,155 @@
       message('Playback opened in mpv.');
     });
   }
+  async function loadEpisodeProgresses() {
+    if (!details?.item) {
+      episodeProgresses = [];
+      return;
+    }
+    try {
+      const mediaId = details.item.mediaId ?? `${details.item.providerId}::${details.item.url}`;
+      episodeProgresses = await call<WatchProgress[]>('get_media_watch_progress', {
+        mediaId,
+      });
+    } catch {
+      episodeProgresses = [];
+    }
+  }
+
+  function isEpisodeWatched(ep: Episode, idx: number): boolean {
+    if (!episodeProgresses.length) return false;
+    return episodeProgresses.some((p) => {
+      if (ep.id && p.episodeId === ep.id) return p.isWatched;
+      if (ep.id && p.episodeId.endsWith(`::${ep.id}`)) return p.isWatched;
+      if (ep.data && p.episodeId.includes(ep.data) && ep.data.length > 2) return p.isWatched;
+      if (p.episodeId.includes(`s${ep.season ?? 1}e${ep.episode ?? idx + 1}`)) return p.isWatched;
+      return false;
+    });
+  }
+
+  async function toggleEpisodeWatched(ep: Episode, idx: number) {
+    if (!details) return;
+    const mediaId = details.item.mediaId ?? `${details.item.providerId}::${details.item.url}`;
+    const targetId = ep.id ?? `${mediaId}::s${ep.season ?? 1}e${ep.episode ?? idx + 1}`;
+    const currentlyWatched = isEpisodeWatched(ep, idx);
+    await call('mark_episode_watched', {
+      mediaId,
+      episodeId: targetId,
+      isWatched: !currentlyWatched,
+    });
+    await loadEpisodeProgresses();
+    await refresh();
+    message(!currentlyWatched ? 'Marked as watched.' : 'Marked as unwatched.');
+  }
+
+  async function markUpToEpisode(ep: Episode, idx: number) {
+    if (!details) return;
+    const mediaId = details.item.mediaId ?? `${details.item.providerId}::${details.item.url}`;
+    const targetId = ep.id ?? `${mediaId}::s${ep.season ?? 1}e${ep.episode ?? idx + 1}`;
+    await call('mark_episodes_up_to', {
+      mediaId,
+      targetEpisodeId: targetId,
+      episodes: details.episodes,
+    });
+    await loadEpisodeProgresses();
+    await refresh();
+    message('Marked watched up to this episode.');
+  }
+
+  async function updateWatchStatus(status: WatchStatus) {
+    if (!details) return;
+    await task('bookmark', async () => {
+      await call('set_library_status', {
+        item: details!.item,
+        status,
+      });
+      await refresh();
+      message(`Watch status updated to ${status.replace(/_/g, ' ')}.`);
+    });
+  }
+
+  async function toggleFavorite() {
+    if (!details) return;
+    await task('bookmark', async () => {
+      const nextFav = !detailFavorite;
+      await call('set_library_favorite', {
+        item: details!.item,
+        isFavorite: nextFav,
+      });
+      await refresh();
+      message(nextFav ? 'Added to favorites.' : 'Removed from favorites.');
+    });
+  }
+
+  async function toggleSubscribed() {
+    if (!details) return;
+    await task('bookmark', async () => {
+      const nextSub = !detailSubscribed;
+      await call('set_library_subscribed', {
+        item: details!.item,
+        isSubscribed: nextSub,
+      });
+      await refresh();
+      message(nextSub ? 'Subscribed to updates.' : 'Unsubscribed from updates.');
+    });
+  }
+
+  async function removeLibraryItem(id: string) {
+    await task('bookmark', async () => {
+      await call('remove_library_item', { id });
+      await refresh();
+      message('Removed from library.');
+    });
+  }
+
+  async function confirmClearLibrary(scope: 'all' | 'tab') {
+    modal = null;
+    await task('bookmark', async () => {
+      if (scope === 'all') {
+        await call('clear_library', { status: null });
+        message('Library cleared.');
+      } else {
+        const status =
+          ['watching', 'plan_to_watch', 'completed', 'on_hold', 'dropped'].includes(libraryTab)
+            ? libraryTab
+            : null;
+        await call('clear_library', { status });
+        message(`Cleared ${libraryTab.replace(/_/g, ' ')} list.`);
+      }
+      await refresh();
+    });
+  }
+
+  async function removeHistoryItem(id: string) {
+    await task('history', async () => {
+      await call('remove_history_item', { id });
+      await refresh();
+      message('Removed from watch history.');
+    });
+  }
+
+  async function confirmClearHistory() {
+    modal = null;
+    await task('history', async () => {
+      await call('clear_history');
+      await refresh();
+      message('Watch history cleared.');
+    });
+  }
+
   async function toggleBookmark() {
     if (!details) return;
     const item = details.item;
     await task('bookmark', async () => {
-      const existing = snapshot.library.find(
-        (saved) => saved.item.providerId === item.providerId && saved.item.url === item.url,
-      );
-      if (existing) await call('remove_bookmark', { id: existing.id });
-      else await call('bookmark', { item });
+      const existing = detailLibraryItem;
+      if (existing) {
+        await call('remove_library_item', { id: existing.id });
+        message('Removed from your library.');
+      } else {
+        await call('bookmark', { item });
+        message('Saved to your library.');
+      }
       await refresh();
-      message(existing ? 'Removed from your library.' : 'Saved to your library.');
     });
   }
   async function resume(watch: WatchEntry) {
@@ -1008,6 +1240,9 @@
         resume: watch.position,
       });
       details = loaded;
+      if (details?.item) {
+        await loadEpisodeProgresses();
+      }
       selectedEpisode = episode;
       links = resolved;
       nowPlaying = loaded.item.name;
@@ -1382,6 +1617,37 @@
                   : 'Save to library'}</button
               >
             </div>
+            <div class="detail-library-controls">
+              <div class="status-select-wrap">
+                <select
+                  class="status-select"
+                  value={detailStatus}
+                  onchange={(e) => updateWatchStatus(e.currentTarget.value as WatchStatus)}
+                  disabled={!!busy}
+                >
+                  <option value="none">No status</option>
+                  <option value="watching">Watching</option>
+                  <option value="plan_to_watch">Plan to watch</option>
+                  <option value="completed">Completed</option>
+                  <option value="on_hold">On hold</option>
+                  <option value="dropped">Dropped</option>
+                </select>
+              </div>
+              <button
+                class="button secondary icon-toggle-btn"
+                class:active={detailFavorite}
+                disabled={!!busy}
+                onclick={toggleFavorite}
+                title={detailFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              ><Heart size={16} fill={detailFavorite ? 'currentColor' : 'none'} />{detailFavorite ? 'Favorited' : 'Favorite'}</button>
+              <button
+                class="button secondary icon-toggle-btn"
+                class:active={detailSubscribed}
+                disabled={!!busy}
+                onclick={toggleSubscribed}
+                title={detailSubscribed ? 'Unsubscribe' : 'Subscribe'}
+              ><Bell size={16} fill={detailSubscribed ? 'currentColor' : 'none'} />{detailSubscribed ? 'Subscribed' : 'Subscribe'}</button>
+            </div>
           </div>
         </section>
         {#if links}<section class="section streams-section">
@@ -1410,16 +1676,35 @@
             <span>{details.episodes.length} {details.episodes.length === 1 ? 'item' : 'items'}</span
             >
           </div>
-          {#each details.episodes as episode, i}<button
-              class="episode-row"
-              disabled={!!busy}
-              onclick={() => resolve(episode)}
-              ><span class="episode-number">{String(i + 1).padStart(2, '0')}</span><span
-                >{episode.name}</span
-              >{#if episode.season}<small>Season {episode.season}</small>{/if}<Play
-                size={17}
-              /></button
-            >{/each}
+          {#each details.episodes as episode, i}<div
+              class="episode-item-wrap"
+              class:watched={isEpisodeWatched(episode, i)}
+            ><button
+                class="episode-row"
+                disabled={!!busy}
+                onclick={() => resolve(episode)}
+                ><span class="episode-number">{String(i + 1).padStart(2, '0')}</span><span
+                  >{episode.name}</span
+                >{#if episode.season}<small>Season {episode.season}</small>{/if}<Play
+                  size={17}
+                /></button
+              ><div class="episode-actions">
+                <button
+                  class="watched-toggle-btn"
+                  class:is-watched={isEpisodeWatched(episode, i)}
+                  title={isEpisodeWatched(episode, i) ? 'Mark unwatched' : 'Mark watched'}
+                  disabled={!!busy}
+                  onclick={() => toggleEpisodeWatched(episode, i)}
+                >{#if isEpisodeWatched(episode, i)}<CheckCheck size={16} />{:else}<Circle size={16} />{/if}</button>
+                {#if details.episodes.length > 1}<button
+                    class="mark-up-to-btn"
+                    title="Mark watched up to here"
+                    disabled={!!busy}
+                    onclick={() => markUpToEpisode(episode, i)}
+                  ><CheckCheck size={13} />Up to here</button
+                >{/if}
+              </div>
+            </div>{/each}
         </section>
       {:else if page === 'discover'}
         <div class="page-heading home-heading">
@@ -1755,33 +2040,39 @@
           <div>
             <span class="eyebrow">YOUR COLLECTION</span>
             <h1>My library</h1>
-            <p>Saved titles and everything you’re watching.</p>
+            <p>Saved titles and everything you're watching.</p>
           </div>
           <span class="subtle-count">{snapshot.library.length} saved</span>
         </div>
         {#if snapshot.history.length}<section class="section">
             <div class="section-title">
               <h2>Continue watching</h2>
-              <span>Saved on this device</span>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <span>Saved on this device</span>
+                <button class="button secondary small" onclick={() => (modal = 'clearHistory')}>Clear all</button>
+              </div>
             </div>
             <div class="history-grid">
-              {#each snapshot.history as watch}<button
-                  class="history-card"
-                  onclick={() => resume(watch)}
-                  ><span class="history-play"><Play fill="currentColor" size={20} /></span>
-                  <div>
-                    <strong>{watch.item.name}</strong><span
-                      >{formatTime(watch.position)}{watch.duration
-                        ? ` / ${formatTime(watch.duration)}`
-                        : ''}</span
-                    >
-                    <div class="progress-track">
-                      <i
-                        style={`width:${watch.duration ? Math.min(100, (watch.position / watch.duration) * 100) : 0}%`}
-                      ></i>
-                    </div>
-                  </div></button
-                >{/each}
+              {#each snapshot.history as watch}<div class="history-card-wrapper">
+                  <button
+                    class="history-card"
+                    onclick={() => resume(watch)}
+                    ><span class="history-play"><Play fill="currentColor" size={20} /></span>
+                    <div>
+                      <strong>{watch.item.name}</strong><span
+                        >{formatTime(watch.position)}{watch.duration
+                          ? ` / ${formatTime(watch.duration)}`
+                          : ''}</span
+                      >
+                      <div class="progress-track">
+                        <i
+                          style={`width:${watch.duration ? Math.min(100, (watch.position / watch.duration) * 100) : 0}%`}
+                        ></i>
+                      </div>
+                    </div></button
+                  >
+                  <button class="history-remove-btn" title="Remove" onclick={() => removeHistoryItem(watch.id)}><X size={14} /></button>
+                </div>{/each}
             </div>
           </section>{/if}
         <section class="section">
@@ -1789,19 +2080,56 @@
             <h2>Saved for later</h2>
             <Bookmark size={18} />
           </div>
-          {#if snapshot.library.length}<div class="media-grid">
-              {#each snapshot.library as saved, i}<MediaCard
-                  item={saved.item}
-                  index={i}
-                  onclick={() => openItem(saved.item)}
-                />{/each}
+          <nav class="library-tabs-bar">
+            {#each [['all','All'],['watching','Watching'],['plan_to_watch','Plan to watch'],['completed','Completed'],['on_hold','On hold'],['dropped','Dropped'],['favorites','Favorites'],['subscribed','Subscribed']] as [key, label]}
+              <button class="library-tab-button" class:active={libraryTab === key} onclick={() => onLibraryTabChange(key as LibraryTab)}>{label}</button>
+            {/each}
+          </nav>
+          <div class="library-toolbar">
+            <div class="library-search-wrap">
+              <span><Search size={14} /></span>
+              <input type="text" placeholder="Search library…" bind:value={libraryQuery} />
+            </div>
+            <select class="library-sort-select" value={librarySort} onchange={(e) => onLibrarySortChange(e.currentTarget.value)}>
+              <option value="updated">Recently updated</option>
+              <option value="alpha_asc">A → Z</option>
+              <option value="alpha_desc">Z → A</option>
+              <option value="release_date">Release date</option>
+              {#if hasScoredItems}<option value="score">Score</option>{/if}
+            </select>
+            {#if libraryTabFiltered.length > 0}
+              <button class="button secondary small" onclick={() => (modal = 'clearLibrary')}>Clear list</button>
+            {/if}
+          </div>
+          {#if sortedLibrary.length}<div class="media-grid">
+              {#each sortedLibrary as saved, i}<div class="library-card-wrapper">
+                  <MediaCard
+                    item={saved.item}
+                    index={i}
+                    onclick={() => openItem(saved.item)}
+                  />
+                  <div class="library-card-actions">
+                    {#if saved.watchStatus && saved.watchStatus !== 'none'}<span class="status-badge {saved.watchStatus}">{saved.watchStatus.replace(/_/g, ' ')}</span>{/if}
+                    {#if saved.isFavorite}<span class="icon-badge fav" title="Favorite"><Heart size={12} fill="currentColor" /></span>{/if}
+                    {#if saved.isSubscribed}<span class="icon-badge sub" title="Subscribed"><Bell size={12} fill="currentColor" /></span>{/if}
+                  </div>
+                  <button class="library-remove-card-btn" title="Remove from library" onclick={() => removeLibraryItem(saved.id)}><X size={14} /></button>
+                </div>{/each}
             </div>{:else}<div class="empty-state framed">
               <Bookmark size={40} strokeWidth={1} />
-              <h3>A home for your next watch.</h3>
-              <p>Save a title from any source and it will be waiting here.</p>
-              <button class="button primary" onclick={() => navigate('discover')}
-                >Explore your sources <ArrowRight size={16} /></button
-              >
+              {#if libraryQuery.trim()}
+                <h3>No matches found.</h3>
+                <p>Try a different search term.</p>
+              {:else if libraryTab !== 'all'}
+                <h3>Nothing in this list yet.</h3>
+                <p>Change a title's status to see it here.</p>
+              {:else}
+                <h3>A home for your next watch.</h3>
+                <p>Save a title from any source and it will be waiting here.</p>
+                <button class="button primary" onclick={() => navigate('discover')}
+                  >Explore your sources <ArrowRight size={16} /></button
+                >
+              {/if}
             </div>{/if}
         </section>
       {:else if page === 'extensions'}
@@ -2238,7 +2566,7 @@
 >
   <div class="dialog-heading">
     <span class="extension-icon"
-      >{#if modal === 'repository' || modal === 'rename'}<Globe size={25} />{:else if modal === 'localInstall' || modal === 'clone'}<Puzzle size={25} />{:else}<Link size={25} />{/if}</span
+      >{#if modal === 'repository' || modal === 'rename'}<Globe size={25} />{:else if modal === 'localInstall' || modal === 'clone'}<Puzzle size={25} />{:else if modal === 'clearLibrary' || modal === 'clearHistory'}<Trash2 size={25} />{:else}<Link size={25} />{/if}</span
     ><button class="icon-button" aria-label="Close dialog" onclick={() => (modal = null)}
       ><X size={20} /></button
     >
@@ -2254,7 +2582,11 @@
             ? 'Configure clone site'
             : modal === 'test'
               ? 'Source Self-Tester'
-              : 'Something ready to play?'}
+              : modal === 'clearLibrary'
+                ? 'Clear library'
+                : modal === 'clearHistory'
+                  ? 'Clear watch history'
+                  : 'Something ready to play?'}
   </h2>
   <p>
     {modal === 'repository'
@@ -2267,7 +2599,11 @@
             ? 'Configure an independent mirror or domain clone for this source without mutating the original.'
             : modal === 'test'
               ? 'Verifies provider capabilities across Home, Search, Details, and Stream link resolution.'
-              : 'Open a direct HTTP or HTTPS media URL in your native player.'}
+              : modal === 'clearLibrary'
+                ? 'Choose whether to clear titles in the current tab or your entire saved library.'
+                : modal === 'clearHistory'
+                  ? 'Are you sure you want to clear your local watch history? This cannot be undone.'
+                  : 'Open a direct HTTP or HTTPS media URL in your native player.'}
   </p>
   {#if error}<div class="dialog-error" role="alert">{error}</div>{/if}
   {#if modal === 'repository'}<form onsubmit={addRepository}>
@@ -2376,6 +2712,39 @@
       <div class="dialog-actions">
         <button type="button" class="button secondary" onclick={cancelProviderTest}>
           {busy === 'testing' ? 'Cancel test' : 'Close'}
+        </button>
+      </div>
+    </div>
+  {:else if modal === 'clearLibrary'}
+    <div style="display: flex; flex-direction: column; gap: 14px; margin: 16px 0;">
+      {#if ['watching', 'plan_to_watch', 'completed', 'on_hold', 'dropped'].includes(libraryTab)}
+        <p>You can clear only items with status "<strong>{libraryTab.replace(/_/g, ' ')}</strong>", or clear all saved library titles.</p>
+        <div class="dialog-actions">
+          <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button>
+          <button type="button" class="button secondary" onclick={() => confirmClearLibrary('tab')}>
+            Clear "{libraryTab.replace(/_/g, ' ')}"
+          </button>
+          <button type="button" class="button danger" onclick={() => confirmClearLibrary('all')}>
+            <Trash2 size={16} />Clear all
+          </button>
+        </div>
+      {:else}
+        <p>This will remove all saved titles from your local library.</p>
+        <div class="dialog-actions">
+          <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button>
+          <button type="button" class="button danger" onclick={() => confirmClearLibrary('all')}>
+            <Trash2 size={16} />Clear entire library
+          </button>
+        </div>
+      {/if}
+    </div>
+  {:else if modal === 'clearHistory'}
+    <div style="display: flex; flex-direction: column; gap: 14px; margin: 16px 0;">
+      <p>Are you sure you want to clear your continue watching history? All progress items will be removed from this device.</p>
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button>
+        <button type="button" class="button danger" onclick={confirmClearHistory}>
+          <Trash2 size={16} />Clear history
         </button>
       </div>
     </div>

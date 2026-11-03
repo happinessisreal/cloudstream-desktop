@@ -701,14 +701,74 @@ impl App {
         let legacy_id = plugin_id(&item.provider_id, &item.url);
         let now_ms = timestamp_ms();
 
-        let entry = LibraryItem {
+        let mut entry = self.store.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
             id: media_id.clone(),
-            item,
+            item: item.clone(),
             saved_at: now_ms,
-        };
+            watch_status: WatchStatus::None,
+            is_favorite: false,
+            is_subscribed: false,
+            profile_id: Some("default".into()),
+            updated_at: Some(now_ms),
+            extra: std::collections::BTreeMap::new(),
+        });
+        entry.item = item;
+        entry.updated_at = Some(now_ms);
         self.store.put("library", &entry.id, &entry)?;
         self.store.put_alias(&legacy_id, "media", &media_id)?;
         Ok(entry)
+    }
+
+    pub fn set_library_status(&self, item: MediaItem, status: WatchStatus) -> Result<LibraryItem> {
+        self.store.set_library_status(item, status, None)
+    }
+
+    pub fn set_library_favorite(&self, item: MediaItem, is_favorite: bool) -> Result<LibraryItem> {
+        self.store.set_library_favorite(item, is_favorite, None)
+    }
+
+    pub fn set_library_subscribed(&self, item: MediaItem, is_subscribed: bool) -> Result<LibraryItem> {
+        self.store.set_library_subscribed(item, is_subscribed, None)
+    }
+
+    pub fn remove_library_item(&self, id: &str) -> Result<()> {
+        self.store.remove_library_item(id)
+    }
+
+    pub fn clear_library(&self, status: Option<WatchStatus>) -> Result<()> {
+        self.store.clear_library(status)
+    }
+
+    pub fn remove_history_item(&self, id: &str) -> Result<()> {
+        self.store.remove_history_item(id)
+    }
+
+    pub fn clear_history(&self) -> Result<()> {
+        self.store.clear_history()
+    }
+
+    pub fn get_media_watch_progress(&self, media_id: &str, profile_id: Option<&str>) -> Result<Vec<WatchProgress>> {
+        self.store.get_media_watch_progress(profile_id.unwrap_or("default"), media_id)
+    }
+
+    pub fn mark_episode_watched(
+        &self,
+        media_id: &str,
+        episode_id: &str,
+        is_watched: bool,
+        profile_id: Option<&str>,
+    ) -> Result<WatchProgress> {
+        self.store.mark_episode_watched(profile_id.unwrap_or("default"), media_id, episode_id, is_watched)
+    }
+
+    pub fn mark_episodes_up_to(
+        &self,
+        media_id: &str,
+        target_episode_id: &str,
+        episodes: &[Episode],
+        profile_id: Option<&str>,
+    ) -> Result<Vec<WatchProgress>> {
+        self.store.mark_episodes_up_to(profile_id.unwrap_or("default"), media_id, target_episode_id, episodes)
     }
     pub async fn play(
         &self,

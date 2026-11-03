@@ -1,10 +1,10 @@
 use crate::models::*;
 use anyhow::{bail, Context, Result};
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{path::Path, sync::Mutex};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 pub struct Migration {
     pub version: u32,
@@ -237,6 +237,18 @@ fn migration_3(tx: &Transaction) -> Result<()> {
     Ok(())
 }
 
+fn migration_4(tx: &Transaction) -> Result<()> {
+    let has_col: bool = tx
+        .prepare("PRAGMA table_info(watch_progress)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "watched_override");
+    if !has_col {
+        tx.execute_batch("ALTER TABLE watch_progress ADD COLUMN watched_override INTEGER;")?;
+    }
+    Ok(())
+}
+
 pub fn standard_migrations() -> Vec<Migration> {
     vec![
         Migration {
@@ -253,6 +265,11 @@ pub fn standard_migrations() -> Vec<Migration> {
             version: 3,
             description: "Stable identity, aliases, payloads and watch progress",
             run: migration_3,
+        },
+        Migration {
+            version: 4,
+            description: "Add watched_override column to watch_progress",
+            run: migration_4,
         },
     ]
 }
@@ -391,8 +408,187 @@ impl Store {
         self.list("library")
     }
 
+    pub fn get_library_item(&self, id: &str) -> Result<Option<LibraryItem>> {
+        if let Some(item) = self.get::<LibraryItem>("library", id)? {
+            return Ok(Some(item));
+        }
+        if let Some(resolved_id) = self.resolve_alias(id, "media")? {
+            return self.get::<LibraryItem>("library", &resolved_id);
+        }
+        Ok(None)
+    }
+
+    pub fn set_library_status(
+        &self,
+        mut item: MediaItem,
+        status: WatchStatus,
+        profile_id: Option<&str>,
+    ) -> Result<LibraryItem> {
+        let media_id = compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
+        item.media_id = Some(media_id.clone());
+        let legacy_id = crate::repository::plugin_id(&item.provider_id, &item.url);
+        let now_ms = timestamp_ms();
+
+        let mut entry = self.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
+            id: media_id.clone(),
+            item: item.clone(),
+            saved_at: now_ms,
+            watch_status: status,
+            is_favorite: false,
+            is_subscribed: false,
+            profile_id: profile_id.map(String::from).or_else(|| Some("default".into())),
+            updated_at: Some(now_ms),
+            extra: std::collections::BTreeMap::new(),
+        });
+
+        entry.watch_status = status;
+        entry.item = item;
+        entry.updated_at = Some(now_ms);
+        if entry.profile_id.is_none() {
+            entry.profile_id = profile_id.map(String::from).or_else(|| Some("default".into()));
+        }
+
+        self.put("library", &entry.id, &entry)?;
+        self.put_alias(&legacy_id, "media", &media_id)?;
+        Ok(entry)
+    }
+
+    pub fn set_library_favorite(
+        &self,
+        mut item: MediaItem,
+        is_favorite: bool,
+        profile_id: Option<&str>,
+    ) -> Result<LibraryItem> {
+        let media_id = compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
+        item.media_id = Some(media_id.clone());
+        let legacy_id = crate::repository::plugin_id(&item.provider_id, &item.url);
+        let now_ms = timestamp_ms();
+
+        let mut entry = self.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
+            id: media_id.clone(),
+            item: item.clone(),
+            saved_at: now_ms,
+            watch_status: WatchStatus::None,
+            is_favorite,
+            is_subscribed: false,
+            profile_id: profile_id.map(String::from).or_else(|| Some("default".into())),
+            updated_at: Some(now_ms),
+            extra: std::collections::BTreeMap::new(),
+        });
+
+        entry.is_favorite = is_favorite;
+        entry.item = item;
+        entry.updated_at = Some(now_ms);
+        if entry.profile_id.is_none() {
+            entry.profile_id = profile_id.map(String::from).or_else(|| Some("default".into()));
+        }
+
+        self.put("library", &entry.id, &entry)?;
+        self.put_alias(&legacy_id, "media", &media_id)?;
+        Ok(entry)
+    }
+
+    pub fn set_library_subscribed(
+        &self,
+        mut item: MediaItem,
+        is_subscribed: bool,
+        profile_id: Option<&str>,
+    ) -> Result<LibraryItem> {
+        let media_id = compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
+        item.media_id = Some(media_id.clone());
+        let legacy_id = crate::repository::plugin_id(&item.provider_id, &item.url);
+        let now_ms = timestamp_ms();
+
+        let mut entry = self.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
+            id: media_id.clone(),
+            item: item.clone(),
+            saved_at: now_ms,
+            watch_status: WatchStatus::None,
+            is_favorite: false,
+            is_subscribed,
+            profile_id: profile_id.map(String::from).or_else(|| Some("default".into())),
+            updated_at: Some(now_ms),
+            extra: std::collections::BTreeMap::new(),
+        });
+
+        entry.is_subscribed = is_subscribed;
+        entry.item = item;
+        entry.updated_at = Some(now_ms);
+        if entry.profile_id.is_none() {
+            entry.profile_id = profile_id.map(String::from).or_else(|| Some("default".into()));
+        }
+
+        self.put("library", &entry.id, &entry)?;
+        self.put_alias(&legacy_id, "media", &media_id)?;
+        Ok(entry)
+    }
+
+    pub fn remove_library_item(&self, id: &str) -> Result<()> {
+        let resolved = self.resolve_alias(id, "media")?.unwrap_or_else(|| id.to_string());
+        self.remove("library", &resolved)?;
+        if resolved != id {
+            self.remove("library", id)?;
+        }
+        Ok(())
+    }
+
+    pub fn clear_library(&self, status: Option<WatchStatus>) -> Result<()> {
+        match status {
+            None => {
+                let connection = self
+                    .connection
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+                connection.execute("DELETE FROM records WHERE kind = 'library'", [])?;
+                Ok(())
+            }
+            Some(target_status) => {
+                let items: Vec<LibraryItem> = self.library()?;
+                for mut item in items {
+                    if item.watch_status == target_status {
+                        if !item.is_favorite && !item.is_subscribed {
+                            self.remove_library_item(&item.id)?;
+                        } else {
+                            item.watch_status = WatchStatus::None;
+                            item.updated_at = Some(timestamp_ms());
+                            self.put("library", &item.id, &item)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
     pub fn history(&self) -> Result<Vec<WatchEntry>> {
         self.list("history")
+    }
+
+    pub fn remove_history_item(&self, id: &str) -> Result<()> {
+        let resolved = self.resolve_alias(id, "episode")?.unwrap_or_else(|| id.to_string());
+        self.remove("history", &resolved)?;
+        if resolved != id {
+            self.remove("history", id)?;
+        }
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        connection.execute(
+            "DELETE FROM watch_progress WHERE episode_id = ?1 OR episode_id = ?2",
+            params![resolved, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_history(&self) -> Result<()> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        connection.execute("DELETE FROM records WHERE kind = 'history'", [])?;
+        connection.execute("DELETE FROM watch_progress", [])?;
+        Ok(())
     }
 
     pub fn get_settings(&self) -> Result<Settings> {
@@ -482,23 +678,48 @@ impl Store {
 
     pub fn save_watch_progress(&self, progress: &WatchProgress) -> Result<()> {
         let extra_str = serde_json::to_string(&progress.extra)?;
-        self.connection
+        let connection = self
+            .connection
             .lock()
-            .map_err(|_| anyhow::anyhow!("Database lock failed"))?
-            .execute(
-                "INSERT OR REPLACE INTO watch_progress (profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched, completion_reason, extra) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    progress.profile_id,
-                    progress.media_id,
-                    progress.episode_id,
-                    progress.position_seconds,
-                    progress.duration_seconds,
-                    progress.updated_at_ms,
-                    if progress.is_watched { 1 } else { 0 },
-                    progress.completion_reason,
-                    extra_str
-                ],
-            )?;
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+
+        // Determine watched_override and is_watched:
+        // If progress.watched_override is None, check if existing record has a manual override!
+        let (watched_override_val, is_watched_val) = match progress.watched_override {
+            Some(manual) => (Some(manual), manual),
+            None => {
+                let existing_override: Option<Option<i64>> = connection
+                    .query_row(
+                        "SELECT watched_override FROM watch_progress WHERE profile_id = ?1 AND episode_id = ?2",
+                        params![progress.profile_id, progress.episode_id],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                match existing_override.flatten() {
+                    Some(1) => (Some(true), true),
+                    Some(0) => (Some(false), false),
+                    _ => (None, progress.is_watched),
+                }
+            }
+        };
+
+        let override_int = watched_override_val.map(|v| if v { 1 } else { 0 });
+
+        connection.execute(
+            "INSERT OR REPLACE INTO watch_progress (profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched, completion_reason, extra, watched_override) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                progress.profile_id,
+                progress.media_id,
+                progress.episode_id,
+                progress.position_seconds,
+                progress.duration_seconds,
+                progress.updated_at_ms,
+                if is_watched_val { 1 } else { 0 },
+                progress.completion_reason,
+                extra_str,
+                override_int
+            ],
+        )?;
         Ok(())
     }
 
@@ -508,12 +729,14 @@ impl Store {
             .lock()
             .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
         let mut stmt = connection.prepare(
-            "SELECT profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched, completion_reason, extra FROM watch_progress WHERE profile_id = ?1 AND episode_id = ?2"
+            "SELECT profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched, completion_reason, extra, watched_override FROM watch_progress WHERE profile_id = ?1 AND episode_id = ?2"
         )?;
         let mut rows = stmt.query([profile_id, episode_id])?;
         if let Some(row) = rows.next()? {
             let extra_str: String = row.get(8).unwrap_or_else(|_| "{}".into());
             let extra: std::collections::BTreeMap<String, serde_json::Value> = serde_json::from_str(&extra_str).unwrap_or_default();
+            let override_opt: Option<i64> = row.get(9)?;
+            let watched_override = override_opt.map(|v| v != 0);
             Ok(Some(WatchProgress {
                 profile_id: row.get(0)?,
                 media_id: row.get(1)?,
@@ -523,11 +746,140 @@ impl Store {
                 updated_at_ms: row.get(5)?,
                 is_watched: row.get::<_, i64>(6)? != 0,
                 completion_reason: row.get(7)?,
+                watched_override,
                 extra,
             }))
         } else {
             Ok(None)
         }
+    }
+
+    pub fn get_media_watch_progress(&self, profile_id: &str, media_id: &str) -> Result<Vec<WatchProgress>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT profile_id, media_id, episode_id, position_seconds, duration_seconds, updated_at_ms, is_watched, completion_reason, extra, watched_override FROM watch_progress WHERE profile_id = ?1 AND media_id = ?2 ORDER BY updated_at_ms DESC"
+        )?;
+        let rows = stmt.query_map([profile_id, media_id], |row| {
+            let extra_str: String = row.get(8).unwrap_or_else(|_| "{}".into());
+            let extra: std::collections::BTreeMap<String, serde_json::Value> = serde_json::from_str(&extra_str).unwrap_or_default();
+            let override_opt: Option<i64> = row.get(9)?;
+            let watched_override = override_opt.map(|v| v != 0);
+            Ok(WatchProgress {
+                profile_id: row.get(0)?,
+                media_id: row.get(1)?,
+                episode_id: row.get(2)?,
+                position_seconds: row.get(3)?,
+                duration_seconds: row.get(4)?,
+                updated_at_ms: row.get(5)?,
+                is_watched: row.get::<_, i64>(6)? != 0,
+                completion_reason: row.get(7)?,
+                watched_override,
+                extra,
+            })
+        })?;
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    pub fn mark_episode_watched(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        episode_id: &str,
+        is_watched: bool,
+    ) -> Result<WatchProgress> {
+        let now_ms = timestamp_ms();
+        let existing = self.get_watch_progress(profile_id, episode_id)?;
+        let mut progress = existing.unwrap_or_else(|| WatchProgress {
+            profile_id: profile_id.to_string(),
+            media_id: media_id.to_string(),
+            episode_id: episode_id.to_string(),
+            position_seconds: 0.0,
+            duration_seconds: None,
+            updated_at_ms: now_ms,
+            is_watched,
+            watched_override: Some(is_watched),
+            completion_reason: if is_watched { Some("manual_mark".into()) } else { None },
+            extra: std::collections::BTreeMap::new(),
+        });
+
+        progress.is_watched = is_watched;
+        progress.watched_override = Some(is_watched);
+        progress.updated_at_ms = now_ms;
+        if is_watched {
+            if progress.position_seconds == 0.0 {
+                if let Some(dur) = progress.duration_seconds {
+                    progress.position_seconds = dur;
+                }
+            }
+            progress.completion_reason = Some("manual_mark".into());
+        } else {
+            progress.completion_reason = None;
+        }
+
+        self.save_watch_progress(&progress)?;
+        Ok(progress)
+    }
+
+    pub fn mark_episodes_up_to(
+        &self,
+        profile_id: &str,
+        media_id: &str,
+        target_episode_id: &str,
+        episodes: &[Episode],
+    ) -> Result<Vec<WatchProgress>> {
+        let mut enriched: Vec<(String, &Episode)> = Vec::with_capacity(episodes.len());
+        let mut target_dub: Option<DubStatus> = None;
+        let mut found_target = false;
+
+        for (idx, ep) in episodes.iter().enumerate() {
+            let ep_id = ep.id.clone().unwrap_or_else(|| {
+                compute_episode_id(media_id, ep, ep.dub_status, ep.index.map(|i| i as usize).or(Some(idx)))
+            });
+            if ep_id == target_episode_id {
+                target_dub = ep.dub_status;
+                found_target = true;
+            }
+            enriched.push((ep_id, ep));
+        }
+
+        if !found_target {
+            return Ok(Vec::new());
+        }
+
+        let mut matching_group: Vec<(String, &Episode)> = enriched
+            .into_iter()
+            .filter(|(_, ep)| ep.dub_status == target_dub)
+            .collect();
+
+        matching_group.sort_by_key(|(_, ep)| {
+            (
+                ep.season.unwrap_or(1),
+                ep.episode.unwrap_or(0),
+                ep.index.unwrap_or(0),
+            )
+        });
+
+        let Some(pos) = matching_group
+            .iter()
+            .position(|(id, _)| id == target_episode_id)
+        else {
+            return Ok(Vec::new());
+        };
+
+        let mut updated = Vec::new();
+        for (ep_id, _ep) in &matching_group[0..=pos] {
+            let res = self.mark_episode_watched(profile_id, media_id, ep_id, true)?;
+            updated.push(res);
+        }
+
+        Ok(updated)
     }
 
     pub fn save_watch_entry(&self, watch: &WatchEntry, profile_id: &str) -> Result<()> {
@@ -553,6 +905,7 @@ impl Store {
             duration_seconds: if watch.duration > 0.0 { Some(watch.duration) } else { None },
             updated_at_ms: watch.watched_at,
             is_watched,
+            watched_override: None,
             completion_reason: None,
             extra: std::collections::BTreeMap::new(),
         };
