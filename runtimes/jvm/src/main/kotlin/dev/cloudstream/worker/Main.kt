@@ -214,7 +214,13 @@ private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?):
         "protocolVersion" to 2,
         "runtime" to "jvm",
         "upstreamCommit" to "5024ace2922a148d38df2a816b483b529789cf58",
+        "mediaTransport" to mapOf(
+            "enabled" to true,
+            "port" to dev.cloudstream.worker.transport.MediaTransportService.port,
+            "address" to "127.0.0.1"
+        ),
         "webViewSupported" to false,
+        "webViewReport" to dev.cloudstream.worker.webview.DefaultWebViewResolverBridge.getUnsupportedReport(),
         "legacyDexSupported" to true,
         "capabilities" to listOf(
             "loadLinks",
@@ -226,15 +232,41 @@ private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?):
             "providerCapabilities",
             "cancellation",
             "progressEvents",
-            "inspectPackage"
+            "inspectPackage",
+            "mediaTransport",
+            "sessionHandles",
+            "verifierLifecycle",
+            "webViewDiagnostic"
         )
     )
+    "createMediaSession" -> {
+        val resourceHandle = params.path("resourceHandle").asText()
+        dev.cloudstream.worker.transport.MediaTransportService.createSession(
+            resourceHandle,
+            workerScope
+        ) { id ->
+            try { provider(id) } catch (_: Exception) { null }
+        }
+    }
+    "closeMediaSession" -> {
+        val sessionToken = params.path("sessionToken").asText()
+        val closed = dev.cloudstream.worker.transport.MediaTransportService.closeSession(sessionToken)
+        mapOf("closed" to closed)
+    }
+    "getWebViewStatus" -> {
+        dev.cloudstream.worker.webview.DefaultWebViewResolverBridge.getUnsupportedReport()
+    }
     "inspectPackage" -> {
         val file = File(params.path("path").asText()).canonicalFile
         inspectPackage(file).toMap()
     }
     "loadPlugin" -> registryMutex.withLock { load(params) }
-    "unloadPlugin" -> registryMutex.withLock { unload(params.path("pluginId").asText()); true }
+    "unloadPlugin" -> registryMutex.withLock {
+        val pid = params.path("pluginId").asText()
+        dev.cloudstream.worker.transport.MediaTransportService.unregisterPluginResources(pid)
+        unload(pid)
+        true
+    }
     "listProviders" -> providers()
     "getPluginStates" -> pluginStates.values.toList()
     "search" -> {
@@ -307,7 +339,7 @@ private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?):
                     ))
                 }
             }, { link ->
-                val mapped = mapStream(link)
+                val mapped = mapStream(link, api, params.path("providerId").asText())
                 streams.add(mapped)
                 if (idNode != null && !idNode.isNull) {
                     sendFrame(mapOf(
@@ -384,6 +416,10 @@ private fun dispatchMethod(method: String, params: JsonNode, idNode: JsonNode?) 
 }
 
 fun main() {
+    dev.cloudstream.worker.transport.MediaTransportService.start()
+    Runtime.getRuntime().addShutdownHook(Thread {
+        dev.cloudstream.worker.transport.MediaTransportService.stop()
+    })
     // Upstream providers log to stdout. Reserve the original stream exclusively for framed RPC.
     rpcOut = System.out
     System.setOut(System.err)

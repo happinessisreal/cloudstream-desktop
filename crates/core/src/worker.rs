@@ -283,6 +283,46 @@ impl Worker {
         }
     }
 
+    pub async fn create_media_session(
+        &self,
+        installed: &[InstalledPlugin],
+        resource_handle: &str,
+    ) -> Result<MediaSessionInfo> {
+        let val = self
+            .request(
+                installed,
+                "createMediaSession",
+                json!({ "resourceHandle": resource_handle }),
+            )
+            .await?;
+        let info: MediaSessionInfo = serde_json::from_value(val)?;
+        Ok(info)
+    }
+
+    pub async fn close_media_session(
+        &self,
+        installed: &[InstalledPlugin],
+        session_token: &str,
+    ) -> Result<bool> {
+        let val = self
+            .request(
+                installed,
+                "closeMediaSession",
+                json!({ "sessionToken": session_token }),
+            )
+            .await?;
+        Ok(val.get("closed").and_then(|v| v.as_bool()).unwrap_or(true))
+    }
+
+    pub async fn get_webview_status(
+        &self,
+        installed: &[InstalledPlugin],
+    ) -> Result<WebViewReport> {
+        let val = self.request(installed, "getWebViewStatus", json!({})).await?;
+        let report: WebViewReport = serde_json::from_value(val)?;
+        Ok(report)
+    }
+
     pub async fn stop(&self) {
         let mut guard = self.session.lock().await;
         if let Some(session) = guard.take() {

@@ -249,7 +249,7 @@ internal fun mapDetails(api: MainAPI, details: LoadResponse): Map<String, Any?> 
     )
 }
 
-internal fun mapStream(link: ExtractorLink): Map<String, Any?> {
+internal fun mapStream(link: ExtractorLink, api: MainAPI? = null, providerId: String? = null): Map<String, Any?> {
     val audioTracks = link.audioTracks?.map { track ->
         mapOf("url" to track.url, "headers" to (track.headers ?: emptyMap<String, String>()))
     }.orEmpty()
@@ -282,7 +282,12 @@ internal fun mapStream(link: ExtractorLink): Map<String, Any?> {
         else -> "direct"
     }
 
-    return mapOf(
+    val resourceHandle = if (api != null) {
+        val pid = providerId ?: api.name
+        dev.cloudstream.worker.transport.MediaTransportService.registerResource(pid, link, api)
+    } else null
+
+    val map = mutableMapOf<String, Any?>(
         "name" to link.name,
         "url" to link.url,
         "referer" to link.referer,
@@ -296,6 +301,10 @@ internal fun mapStream(link: ExtractorLink): Map<String, Any?> {
         "playlist" to playlist,
         "drm" to drm
     )
+    if (resourceHandle != null) {
+        map["resourceHandle"] = resourceHandle
+    }
+    return map
 }
 
 internal fun mapSubtitle(sub: SubtitleFile): Map<String, Any?> {

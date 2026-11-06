@@ -244,6 +244,10 @@ async fn load_details(
     .map_err(error)
 }
 #[tauri::command]
+async fn get_webview_status(app: State<'_, Backend>) -> Reply<WebViewReport> {
+    app.get_webview_status().await.map_err(error)
+}
+#[tauri::command]
 async fn resolve_links(
     app: State<'_, Backend>,
     provider_id: String,
@@ -539,6 +543,7 @@ fn main() {
             play,
             get_playback_queue,
             set_playback_queue,
+            get_webview_status,
             get_player_state,
             player_action,
             get_settings,

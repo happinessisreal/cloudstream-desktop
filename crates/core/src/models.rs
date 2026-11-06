@@ -622,6 +622,8 @@ pub struct Stream {
     pub extractor_data: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_handle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport_url: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<AudioTrack>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -643,6 +645,32 @@ pub struct Subtitle {
     pub lang_tag: Option<String>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaTransportInfo {
+    pub enabled: bool,
+    pub port: u16,
+    pub address: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaSessionInfo {
+    pub session_token: String,
+    pub transport_url: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WebViewReport {
+    pub supported: bool,
+    pub reason: String,
+    pub message: String,
+    #[serde(default)]
+    pub missing_features: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

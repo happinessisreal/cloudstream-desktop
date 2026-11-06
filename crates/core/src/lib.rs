@@ -39,6 +39,7 @@ pub struct App {
     pub mutation: Mutex<()>,
     pub client_requests: Mutex<std::collections::HashMap<String, u64>>,
     pub home_cache: std::sync::Mutex<std::collections::HashMap<HomeCacheKey, HomeCacheEntry>>,
+    pub active_transport_token: Arc<tokio::sync::Mutex<Option<String>>>,
 }
 impl App {
     pub fn open(data: PathBuf, resources: PathBuf) -> Result<Arc<Self>> {
@@ -64,6 +65,7 @@ impl App {
             mutation: Mutex::new(()),
             client_requests: Mutex::new(std::collections::HashMap::new()),
             home_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
+            active_transport_token: Arc::new(tokio::sync::Mutex::new(None)),
         });
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -108,11 +110,24 @@ impl App {
                                 if policy.auto_next {
                                     let _ = flusher.advance_queue_and_play(true).await;
                                 }
+                            } else {
+                                let mut tok_guard = flusher.active_transport_token.lock().await;
+                                if let Some(tok) = tok_guard.take() {
+                                    if let Ok(installed) = flusher.store.installed() {
+                                        let _ = flusher.worker.close_media_session(&installed, &tok).await;
+                                    }
+                                }
                             }
                             current_session = None;
                         }
                         PlayerEvent::Shutdown { .. } => {
                             let _ = flusher.flush_player_progress().await;
+                            let mut tok_guard = flusher.active_transport_token.lock().await;
+                            if let Some(tok) = tok_guard.take() {
+                                if let Ok(installed) = flusher.store.installed() {
+                                    let _ = flusher.worker.close_media_session(&installed, &tok).await;
+                                }
+                            }
                             current_session = None;
                         }
                         _ => {}
@@ -1027,10 +1042,32 @@ impl App {
             }
             _ => None,
         };
+        let mut final_stream = stream.clone();
+        if let Some(ref handle) = stream.resource_handle {
+            if let Ok(installed) = self.store.installed() {
+                if let Ok(session) = self.worker.create_media_session(&installed, handle).await {
+                    let mut tok_guard = self.active_transport_token.lock().await;
+                    if let Some(old_tok) = tok_guard.take() {
+                        let _ = self.worker.close_media_session(&installed, &old_tok).await;
+                    }
+                    *tok_guard = Some(session.session_token.clone());
+                    final_stream.url = session.transport_url.clone();
+                    final_stream.transport_url = Some(session.transport_url);
+                }
+            }
+        } else {
+            let mut tok_guard = self.active_transport_token.lock().await;
+            if let Some(old_tok) = tok_guard.take() {
+                if let Ok(installed) = self.store.installed() {
+                    let _ = self.worker.close_media_session(&installed, &old_tok).await;
+                }
+            }
+        }
+
         let start_pos = watch.as_ref().map(|w| w.position).unwrap_or(resume);
         let session_id = self
             .player
-            .play(&stream, &subtitles, watch.clone(), start_pos, Some(profile_id_str), queue)
+            .play(&final_stream, &subtitles, watch.clone(), start_pos, Some(profile_id_str), queue)
             .await?;
         if let Some(watch) = watch {
             self.store.save_watch_entry(&watch, profile_id_str)?;
@@ -1041,6 +1078,11 @@ impl App {
     pub async fn set_playback_queue(&self, queue: Option<PlaybackQueue>) -> Result<()> {
         self.player.set_queue(queue).await;
         Ok(())
+    }
+
+    pub async fn get_webview_status(&self) -> Result<WebViewReport> {
+        let installed = self.store.installed()?;
+        self.worker.get_webview_status(&installed).await
     }
 
     pub async fn advance_queue_and_play(&self, forward: bool) -> Result<bool> {
