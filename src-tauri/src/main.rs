@@ -39,9 +39,12 @@ async fn update_settings(
     scope: Option<String>,
     profile_id: Option<String>,
 ) -> Reply<Settings> {
-    app.store
+    let settings = app
+        .store
         .update_settings(patch, scope.as_deref(), profile_id.as_deref())
-        .map_err(error)
+        .map_err(error)?;
+    app.player.set_policy(settings.global.playback.clone()).await;
+    Ok(settings)
 }
 #[tauri::command]
 async fn add_repository(app: State<'_, Backend>, url: String) -> Reply<Repository> {
@@ -411,10 +414,21 @@ async fn play(
     episode: Option<Episode>,
     resume: f64,
     profile_id: Option<String>,
+    queue: Option<PlaybackQueue>,
 ) -> Reply<String> {
-    app.play(stream, subtitles, item, episode, resume, profile_id.as_deref())
+    app.play(stream, subtitles, item, episode, resume, profile_id.as_deref(), queue)
         .await
         .map_err(error)
+}
+
+#[tauri::command]
+async fn get_playback_queue(app: State<'_, Backend>) -> Reply<Option<PlaybackQueue>> {
+    Ok(app.player.queue().await)
+}
+
+#[tauri::command]
+async fn set_playback_queue(app: State<'_, Backend>, queue: Option<PlaybackQueue>) -> Reply<()> {
+    app.set_playback_queue(queue).await.map_err(error)
 }
 
 #[tauri::command]
@@ -431,6 +445,14 @@ async fn player_action(app: State<'_, Backend>, action: String) -> Reply<Value> 
         "forward" => json!(["seek", 10]),
         "back" => json!(["seek", -10]),
         "fullscreen" => json!(["cycle", "fullscreen"]),
+        "next" => {
+            let res = app.advance_queue_and_play(true).await.map_err(error)?;
+            return Ok(json!({ "advanced": res }));
+        }
+        "prev" | "previous" => {
+            let res = app.advance_queue_and_play(false).await.map_err(error)?;
+            return Ok(json!({ "advanced": res }));
+        }
         "stop" => {
             let _ = app.save_progress().await;
             app.player.stop().await;
@@ -515,6 +537,8 @@ fn main() {
             mark_episode_watched,
             mark_episodes_up_to,
             play,
+            get_playback_queue,
+            set_playback_queue,
             get_player_state,
             player_action,
             get_settings,

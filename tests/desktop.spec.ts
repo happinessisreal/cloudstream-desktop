@@ -100,6 +100,13 @@ async function desktopFixture(page: Page, unsupported = false) {
           appearance: {
             posterDensity: 'comfortable',
           },
+          playback: {
+            autoNext: true,
+            startPaused: false,
+            completionThreshold: 0.9,
+            resumeThresholdSeconds: 5.0,
+            prefetchNext: true,
+          },
         },
         profiles: {},
       },
@@ -329,6 +336,14 @@ async function desktopFixture(page: Page, unsupported = false) {
                 headers: { 'X-Test': 'a,b' },
                 streamType: 'VIDEO',
               },
+              {
+                name: 'Mirror 1080p',
+                url: 'https://example.com/mirror.mov',
+                referer: '',
+                quality: 1080,
+                headers: {},
+                streamType: 'VIDEO',
+              },
             ],
             subtitles: [],
           };
@@ -528,10 +543,14 @@ async function desktopFixture(page: Page, unsupported = false) {
           }
           return null;
         }
-        case 'play':
+        case 'play': {
+          (state as any).__lastPlayArgs = args;
           return null;
-        case 'player_action':
+        }
+        case 'player_action': {
+          (state as any).__lastPlayerAction = (args as any)?.action;
           return null;
+        }
         case 'remove_extension':
           state.installed = [];
           return null;
@@ -642,6 +661,18 @@ async function desktopFixture(page: Page, unsupported = false) {
             state.settings.profiles = state.settings.profiles || {};
             state.settings.profiles['default'] = state.settings.profiles['default'] || {};
             state.settings.profiles['default'].selectedProvider = patch.selectedProvider;
+          }
+          if (patch.playback) {
+            state.settings.global.playback = {
+              ...(state.settings.global.playback || {
+                autoNext: true,
+                startPaused: false,
+                completionThreshold: 0.9,
+                resumeThresholdSeconds: 5.0,
+                prefetchNext: true,
+              }),
+              ...patch.playback,
+            };
           }
           state.settings.revision = (state.settings.revision || 1) + 1;
           return structuredClone(state.settings);
@@ -1447,4 +1478,122 @@ test('rich details and episode browser: backdrop, safe plot, seasons, dub groups
   await page.keyboard.press('Escape');
   await expect(page.getByRole('heading', { name: 'Anime Adventure', exact: true })).not.toBeVisible();
   await expect(animeCard).toBeFocused();
+});
+
+test('playback queue: next/prev controls, queue index display, auto-next settings, and mirror position preservation', async ({ page }) => {
+  await desktopFixture(page);
+  await page.goto('/');
+
+  // 1. Settings playback preferences
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await expect(page.getByRole('heading', { name: 'Playback' })).toBeVisible();
+  const autoNextGroup = page.getByRole('group', { name: 'Auto-play next episode' });
+  await expect(autoNextGroup).toBeVisible();
+  const autoNextDisable = autoNextGroup.getByRole('button', { name: 'Disable auto-play next episode' });
+  await autoNextDisable.click();
+  await expect(autoNextDisable).toHaveClass(/chosen/);
+
+  const autoNextEnable = autoNextGroup.getByRole('button', { name: 'Enable auto-play next episode' });
+  await autoNextEnable.click();
+  await expect(autoNextEnable).toHaveClass(/chosen/);
+
+  // 2. Play episode from series
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+  const searchInput = page.getByLabel('Search your selected source');
+  await searchInput.fill('Anime');
+  await searchInput.press('Enter');
+
+  const animeCard = page.locator('.media-card', { hasText: 'Anime Adventure' });
+  await expect(animeCard).toBeVisible();
+  await animeCard.click();
+  await expect(page.getByRole('heading', { name: 'Anime Adventure', exact: true })).toBeVisible();
+
+  // Resolve Episode 2
+  await page.locator('.episode-row', { hasText: /\bEpisode 2\b/ }).click();
+  await expect(page.getByRole('heading', { name: 'Choose a stream' })).toBeVisible();
+  await page.locator('.stream-row', { hasText: 'Official Blender download' }).click();
+
+  // Verify play was called with queue containing episodes and currentIndex = 1
+  const playCalls = await page.evaluate(() =>
+    (window as any).__calls.filter((c: any) => c.command === 'play'),
+  );
+  expect(playCalls.length).toBeGreaterThan(0);
+  const lastPlay = playCalls.at(-1)?.args;
+  expect(lastPlay).toBeTruthy();
+  expect(lastPlay.queue).toBeTruthy();
+  expect(lastPlay.queue.currentIndex).toBe(1);
+  expect(lastPlay.queue.episodes.length).toBeGreaterThan(1);
+
+  // 3. Simulate native player emitting active state with queue metadata
+  await page.evaluate(() => {
+    (window as any).__emitPlayerEvent?.({
+      type: 'state_changed',
+      state: {
+        sessionId: 'queue-test-session',
+        active: true,
+        playing: true,
+        paused: false,
+        position: 45.0,
+        duration: 120.0,
+        volume: 100,
+        speed: 1,
+        itemName: 'Anime Adventure',
+        episodeName: 'Episode 2',
+        hasNext: true,
+        hasPrev: true,
+        queueIndex: 1,
+        queueCount: 4,
+      },
+    });
+  });
+
+  // Verify player-bar controls and badge
+  await expect(page.getByText('Episode 2 of 4')).toBeVisible();
+  await expect(page.getByLabel('Previous episode')).toBeEnabled();
+  await expect(page.getByLabel('Next episode')).toBeEnabled();
+
+  // Click Next episode button
+  await page.getByLabel('Next episode').click();
+  const actionCalls = await page.evaluate(() =>
+    (window as any).__calls.filter((c: any) => c.command === 'player_action'),
+  );
+  expect(actionCalls.at(-1)?.args?.action).toBe('next');
+
+  // 4. Test mirror position preservation:
+  // Position is at 45.0 in playerState; clicking another stream must preserve 45.0 as resume position!
+  await page.locator('.stream-row', { hasText: 'Mirror 1080p' }).click();
+  const mirrorPlayCalls = await page.evaluate(() =>
+    (window as any).__calls.filter((c: any) => c.command === 'play'),
+  );
+  expect(mirrorPlayCalls.at(-1)?.args?.resume).toBe(45.0);
+
+  // 5. When at start of queue (hasPrev: false), Previous button is disabled
+  await page.evaluate(() => {
+    (window as any).__emitPlayerEvent?.({
+      type: 'state_changed',
+      state: {
+        sessionId: 'queue-test-session',
+        active: true,
+        playing: true,
+        paused: false,
+        position: 10.0,
+        duration: 120.0,
+        volume: 100,
+        speed: 1,
+        itemName: 'Anime Adventure',
+        episodeName: 'Episode 1',
+        hasNext: true,
+        hasPrev: false,
+        queueIndex: 0,
+        queueCount: 4,
+      },
+    });
+  });
+  await expect(page.getByLabel('Previous episode')).toBeDisabled();
+  await expect(page.getByText('Episode 1 of 4')).toBeVisible();
+
+  // Stop playback cleanly
+  await page.getByLabel('Stop playback').click();
+  await expect(page.getByLabel('Stop playback')).not.toBeVisible();
 });

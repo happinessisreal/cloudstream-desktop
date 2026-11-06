@@ -67,6 +67,13 @@ impl App {
         });
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            if let Ok(settings) = app.store.get_settings() {
+                let policy = settings.global.playback;
+                let app_player = app.clone();
+                handle.spawn(async move {
+                    app_player.player.set_policy(policy).await;
+                });
+            }
             let flusher = app.clone();
             handle.spawn(async move {
                 let mut rx = flusher.player.subscribe();
@@ -90,7 +97,21 @@ impl App {
                                 last_saved_time = std::time::Instant::now();
                             }
                         }
-                        PlayerEvent::EndFile { .. } | PlayerEvent::Shutdown { .. } => {
+                        PlayerEvent::EndFile { ref reason, .. } => {
+                            let _ = flusher.flush_player_progress().await;
+                            if reason == "eof" {
+                                if let Some((watch, profile_id)) = flusher.player.current_watch().await {
+                                    let media_id = watch.item.media_id.as_deref().unwrap_or("");
+                                    let _ = flusher.store.mark_episode_watched(&profile_id, media_id, &watch.id, true);
+                                }
+                                let policy = flusher.player.policy().await;
+                                if policy.auto_next {
+                                    let _ = flusher.advance_queue_and_play(true).await;
+                                }
+                            }
+                            current_session = None;
+                        }
+                        PlayerEvent::Shutdown { .. } => {
                             let _ = flusher.flush_player_progress().await;
                             current_session = None;
                         }
@@ -930,6 +951,7 @@ impl App {
         }
 
         let _ = self.flush_player_progress().await;
+        self.player.set_queue(None).await;
         self.home_cache.lock().unwrap().clear();
         Ok(())
     }
@@ -965,6 +987,7 @@ impl App {
         episode: Option<Episode>,
         resume: f64,
         profile_id: Option<&str>,
+        queue: Option<PlaybackQueue>,
     ) -> Result<String> {
         let _ = self.save_progress().await;
         let profile_id_str = profile_id.unwrap_or("default");
@@ -1007,12 +1030,97 @@ impl App {
         let start_pos = watch.as_ref().map(|w| w.position).unwrap_or(resume);
         let session_id = self
             .player
-            .play(&stream, &subtitles, watch.clone(), start_pos, Some(profile_id_str))
+            .play(&stream, &subtitles, watch.clone(), start_pos, Some(profile_id_str), queue)
             .await?;
         if let Some(watch) = watch {
             self.store.save_watch_entry(&watch, profile_id_str)?;
         }
         Ok(session_id)
+    }
+
+    pub async fn set_playback_queue(&self, queue: Option<PlaybackQueue>) -> Result<()> {
+        self.player.set_queue(queue).await;
+        Ok(())
+    }
+
+    pub async fn advance_queue_and_play(&self, forward: bool) -> Result<bool> {
+        let queue_opt = self.player.queue().await;
+        let Some(mut queue) = queue_opt else {
+            return Ok(false);
+        };
+
+        let target_index = if forward {
+            if queue.current_index + 1 >= queue.episodes.len() {
+                return Ok(false);
+            }
+            queue.current_index + 1
+        } else {
+            if queue.current_index == 0 {
+                return Ok(false);
+            }
+            queue.current_index - 1
+        };
+
+        if let Ok(providers) = self.providers().await {
+            if let Some(p) = providers.iter().find(|p| p.id == queue.media.provider_id) {
+                if p.disabled {
+                    self.player.broadcast_error("".into(), format!("Provider '{}' is disabled", p.name));
+                    return Ok(false);
+                }
+            }
+        }
+
+        let next_episode = queue.episodes[target_index].clone();
+        queue.current_index = target_index;
+        self.player.set_queue(Some(queue.clone())).await;
+
+        let links_res = self.call("resolve_links", serde_json::json!({
+            "providerId": queue.media.provider_id,
+            "data": next_episode.data,
+        })).await;
+
+        let links: ResolvedLinks = match links_res {
+            Ok(val) => match serde_json::from_value(val) {
+                Ok(l) => l,
+                Err(e) => {
+                    self.player.broadcast_error("".into(), format!("Could not parse links: {e}"));
+                    return Ok(false);
+                }
+            },
+            Err(e) => {
+                self.player.broadcast_error("".into(), format!("Failed to resolve stream for next episode: {e}"));
+                return Ok(false);
+            }
+        };
+
+        if links.streams.is_empty() {
+            self.player.broadcast_error("".into(), "No playable streams returned for next episode. Choose a mirror or retry.".into());
+            return Ok(false);
+        }
+
+        let best_stream = links.streams
+            .iter()
+            .max_by_key(|s| s.quality)
+            .cloned()
+            .unwrap_or_else(|| links.streams[0].clone());
+
+        let policy = self.player.policy().await;
+        let profile_id = queue.profile_id.clone();
+        let _ = self.play(
+            best_stream,
+            links.subtitles,
+            Some(queue.media.clone()),
+            Some(next_episode),
+            0.0,
+            Some(&profile_id),
+            Some(queue),
+        ).await?;
+
+        if policy.start_paused {
+            let _ = self.player.command(serde_json::json!(["set_property", "pause", true])).await;
+        }
+
+        Ok(true)
     }
 
     pub async fn flush_player_progress(&self) -> Result<()> {

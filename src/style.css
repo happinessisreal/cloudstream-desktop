@@ -1970,9 +1970,34 @@ main {
   color: #d9dfff;
   padding: 6px;
   border-radius: 50%;
+  transition: opacity 0.15s ease, background 0.15s ease;
 }
-.player-bar > button:hover {
+.player-bar > button:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+.player-bar > button:hover:not(:disabled) {
   background: #42496b;
+}
+.player-bar > button.primary {
+  color: #fff;
+  background: #5064eb;
+}
+.player-bar > button.primary:hover:not(:disabled) {
+  background: #6376f4;
+}
+.queue-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+  color: #d0d6ff;
+  vertical-align: middle;
 }
 @media (min-width: 1650px) {
   .spotlight {

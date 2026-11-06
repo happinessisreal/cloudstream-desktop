@@ -57,7 +57,7 @@ async fn native_mpv_receives_literal_headers_and_accepts_playback_commands() {
         ..Default::default()
     };
     let mut rx = player.subscribe();
-    let session_id = player.play(&stream, &[], None, 0.0, Some("default")).await.unwrap();
+    let session_id = player.play(&stream, &[], None, 0.0, Some("default"), None).await.unwrap();
     assert!(!session_id.is_empty());
 
     let mut state_observed = false;

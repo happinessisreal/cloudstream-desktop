@@ -114,6 +114,13 @@ export const defaultSettings: Settings = {
     appearance: {
       posterDensity: 'comfortable',
     },
+    playback: {
+      autoNext: true,
+      startPaused: false,
+      completionThreshold: 0.9,
+      resumeThresholdSeconds: 5.0,
+      prefetchNext: true,
+    },
   },
   profiles: {},
 };

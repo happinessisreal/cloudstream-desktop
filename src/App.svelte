@@ -61,6 +61,8 @@
     Calendar,
     ArrowUpDown,
     Video,
+    RotateCcw,
+    RotateCw,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage, onPlayerEvent } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -93,6 +95,8 @@
     WatchProgress,
     PlayerState,
     PlayerEvent,
+    PlaybackPolicy,
+    PlaybackQueue,
     Profile,
     CreateProfileInput,
     UpdateProfileInput,
@@ -1052,6 +1056,36 @@
     }
   }
 
+  const playbackPolicy = $derived(
+    snapshot.settings?.global?.playback ?? {
+      autoNext: true,
+      startPaused: false,
+      completionThreshold: 0.9,
+      resumeThresholdSeconds: 5.0,
+      prefetchNext: true,
+    },
+  );
+
+  async function updatePlaybackPolicy(patch: Partial<PlaybackPolicy>) {
+    try {
+      const current = snapshot.settings?.global?.playback ?? {
+        autoNext: true,
+        startPaused: false,
+        completionThreshold: 0.9,
+        resumeThresholdSeconds: 5.0,
+        prefetchNext: true,
+      };
+      const merged = { ...current, ...patch };
+      const updated = await updateSettings({ playback: merged }, 'global');
+      if (snapshot.settings) {
+        snapshot.settings = updated;
+      }
+      message('Playback preferences updated.');
+    } catch (e) {
+      showError(e);
+    }
+  }
+
   function syncSearchItems() {
     const combined: MediaItem[] = [];
     let hasAnyNext = false;
@@ -1522,14 +1556,30 @@
     });
   }
   async function playStream(stream: Stream, resume = pendingResumePosition) {
+    const resumePosition = playerState?.active && playerState.position > 0 ? playerState.position : resume;
     await task('play', async () => {
+      let queue: PlaybackQueue | null = null;
+      if (details?.item && filteredEpisodes.length > 0 && selectedEpisode) {
+        const curIdx = filteredEpisodes.findIndex(
+          (e) => (e.id && e.id === selectedEpisode?.id) || (e.data === selectedEpisode?.data) || (e.name === selectedEpisode?.name)
+        );
+        queue = {
+          profileId: activeProfile,
+          media: details.item,
+          episodes: filteredEpisodes,
+          currentIndex: curIdx >= 0 ? curIdx : 0,
+          dubStatus: selectedDubGroup !== 'all' ? (selectedDubGroup.toLowerCase() as any) : undefined,
+          season: selectedSeason !== 'all' ? selectedSeason : undefined,
+        };
+      }
       const initial = await call<PlayerState | string>('play', {
         stream,
         subtitles: links?.subtitles ?? [],
         item: details?.item ?? null,
         episode: selectedEpisode,
-        resume,
+        resume: resumePosition,
         profileId: activeProfile,
+        queue,
       });
       if (initial && typeof initial === 'object' && 'active' in initial && initial.active) {
         playerState = initial;
@@ -1539,7 +1589,7 @@
           active: true,
           playing: true,
           paused: false,
-          position: resume,
+          position: resumePosition,
           duration: 0,
           volume: 100,
           speed: 1,
@@ -1548,6 +1598,10 @@
           mediaId: details?.item.url ?? null,
           episodeId: selectedEpisode?.name ?? null,
           profileId: activeProfile,
+          hasNext: queue ? queue.currentIndex + 1 < queue.episodes.length : false,
+          hasPrev: queue ? queue.currentIndex > 0 : false,
+          queueIndex: queue ? queue.currentIndex : undefined,
+          queueCount: queue ? queue.episodes.length : undefined,
         };
       }
       modal = null;
@@ -1763,6 +1817,21 @@
       });
       if (!resolved.streams.length)
         throw new Error('No playable stream was returned. Open the title and try another source.');
+      let queue: PlaybackQueue | null = null;
+      if (loaded.item && loaded.episodes.length > 0) {
+        const curIdx = loaded.episodes.findIndex(
+          (ep) =>
+            (ep.id && ep.id === episode.id) ||
+            ep.data === episode.data ||
+            (ep.name === episode.name && ep.season === episode.season),
+        );
+        queue = {
+          profileId: activeProfile,
+          media: loaded.item,
+          episodes: loaded.episodes,
+          currentIndex: curIdx >= 0 ? curIdx : 0,
+        };
+      }
       const initial = await call<PlayerState | string>('play', {
         stream: resolved.streams[0],
         subtitles: resolved.subtitles,
@@ -1770,6 +1839,7 @@
         episode,
         resume: watch.position,
         profileId: activeProfile,
+        queue,
       });
       if (initial && typeof initial === 'object' && 'active' in initial && initial.active) {
         playerState = initial;
@@ -1788,6 +1858,10 @@
           mediaId: loaded.item.url,
           episodeId: episode.name,
           profileId: activeProfile,
+          hasNext: queue ? queue.currentIndex + 1 < queue.episodes.length : false,
+          hasPrev: queue ? queue.currentIndex > 0 : false,
+          queueIndex: queue ? queue.currentIndex : undefined,
+          queueCount: queue ? queue.episodes.length : undefined,
         };
       }
       details = loaded;
@@ -1855,8 +1929,13 @@
     void onPlayerEvent((event) => {
       if (event.type === 'state_changed') {
         playerState = event.state.active ? event.state : null;
-      } else if (event.type === 'shutdown' || event.type === 'end_file') {
+      } else if (event.type === 'shutdown') {
         playerState = null;
+        void refresh();
+      } else if (event.type === 'end_file') {
+        if (event.reason !== 'eof' || !playerState?.hasNext) {
+          playerState = null;
+        }
         void refresh();
       } else if (event.type === 'error') {
         message(event.message);
@@ -3365,6 +3444,90 @@
         </section>
         <section class="settings-panel">
           <div class="section-title">
+            <h2>Playback</h2>
+            <Film size={20} />
+          </div>
+          <div class="preference-row">
+            <div>
+              <strong>Auto-play next episode</strong>
+              <p>Automatically advance and play the next episode when the current one finishes.</p>
+            </div>
+            <div class="segmented-control" role="group" aria-label="Auto-play next episode">
+              <button
+                type="button"
+                aria-label="Enable auto-play next episode"
+                aria-pressed={playbackPolicy.autoNext}
+                class:chosen={playbackPolicy.autoNext}
+                onclick={() => updatePlaybackPolicy({ autoNext: true })}
+              >
+                Enabled
+              </button>
+              <button
+                type="button"
+                aria-label="Disable auto-play next episode"
+                aria-pressed={!playbackPolicy.autoNext}
+                class:chosen={!playbackPolicy.autoNext}
+                onclick={() => updatePlaybackPolicy({ autoNext: false })}
+              >
+                Disabled
+              </button>
+            </div>
+          </div>
+          <div class="preference-row">
+            <div>
+              <strong>Start video paused</strong>
+              <p>Open episodes in mpv paused rather than immediately playing.</p>
+            </div>
+            <div class="segmented-control" role="group" aria-label="Start video paused">
+              <button
+                type="button"
+                aria-label="Enable start paused"
+                aria-pressed={playbackPolicy.startPaused}
+                class:chosen={playbackPolicy.startPaused}
+                onclick={() => updatePlaybackPolicy({ startPaused: true })}
+              >
+                Enabled
+              </button>
+              <button
+                type="button"
+                aria-label="Disable start paused"
+                aria-pressed={!playbackPolicy.startPaused}
+                class:chosen={!playbackPolicy.startPaused}
+                onclick={() => updatePlaybackPolicy({ startPaused: false })}
+              >
+                Disabled
+              </button>
+            </div>
+          </div>
+          <div class="preference-row">
+            <div>
+              <strong>Prefetch next episode</strong>
+              <p>Resolve upcoming links in background for instantaneous transitions.</p>
+            </div>
+            <div class="segmented-control" role="group" aria-label="Prefetch next episode">
+              <button
+                type="button"
+                aria-label="Enable prefetch next episode"
+                aria-pressed={playbackPolicy.prefetchNext}
+                class:chosen={playbackPolicy.prefetchNext}
+                onclick={() => updatePlaybackPolicy({ prefetchNext: true })}
+              >
+                Enabled
+              </button>
+              <button
+                type="button"
+                aria-label="Disable prefetch next episode"
+                aria-pressed={!playbackPolicy.prefetchNext}
+                class:chosen={!playbackPolicy.prefetchNext}
+                onclick={() => updatePlaybackPolicy({ prefetchNext: false })}
+              >
+                Disabled
+              </button>
+            </div>
+          </div>
+        </section>
+        <section class="settings-panel">
+          <div class="section-title">
             <h2>Profiles & Security</h2>
             <button class="text-button" onclick={openProfileManager}>
               <Users size={15} />Manage profiles
@@ -3481,19 +3644,51 @@
     <span class="playing-icon"><Film size={20} /></span>
     <div>
       <strong>{playerState.itemName ?? 'Playing'}</strong>
-      <span>{playerState.episodeName ? playerState.episodeName : (playerState.paused ? 'Paused in mpv' : 'Playing in mpv')}</span>
+      <span>
+        {#if playerState.episodeName}
+          {playerState.episodeName}
+        {:else}
+          {playerState.paused ? 'Paused in mpv' : 'Playing in mpv'}
+        {/if}
+        {#if playerState.queueCount && playerState.queueCount > 1}
+          <span class="queue-badge">
+            Episode {(playerState.queueIndex ?? 0) + 1} of {playerState.queueCount}
+          </span>
+        {/if}
+      </span>
     </div>
-    <button aria-label="Seek back ten seconds" onclick={() => playerAction('back')}
-      ><SkipBack size={19} /></button
-    ><button
+    <button
+      class="player-btn"
+      aria-label="Previous episode"
+      disabled={!playerState.hasPrev}
+      onclick={() => playerAction('prev')}
+    ><SkipBack size={18} /></button>
+    <button
+      class="player-btn"
+      aria-label="Seek back ten seconds"
+      onclick={() => playerAction('back')}
+    ><RotateCcw size={17} /></button>
+    <button
+      class="player-btn primary"
       aria-label={playerState.paused ? 'Resume playback' : 'Pause playback'}
       onclick={() => playerAction(playerState?.paused ? 'play' : 'pause')}
-      >{#if playerState.paused}<Play size={20} />{:else}<Pause size={20} />{/if}</button
-    ><button aria-label="Seek forward ten seconds" onclick={() => playerAction('forward')}
-      ><SkipForward size={19} /></button
-    ><button aria-label="Stop playback" onclick={() => playerAction('stop')}
-      ><Square size={17} /></button
-    >
+    >{#if playerState.paused}<Play size={20} />{:else}<Pause size={20} />{/if}</button>
+    <button
+      class="player-btn"
+      aria-label="Seek forward ten seconds"
+      onclick={() => playerAction('forward')}
+    ><RotateCw size={17} /></button>
+    <button
+      class="player-btn"
+      aria-label="Next episode"
+      disabled={!playerState.hasNext}
+      onclick={() => playerAction('next')}
+    ><SkipForward size={18} /></button>
+    <button
+      class="player-btn"
+      aria-label="Stop playback"
+      onclick={() => playerAction('stop')}
+    ><Square size={16} /></button>
   </div>{/if}
 {#if notice}<div class="toast" role="status">
     <CheckCircle2 size={18} />{notice}<button

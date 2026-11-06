@@ -130,6 +130,25 @@ export interface Provider {
 
 export type DubStatus = 'none' | 'dubbed' | 'subbed' | 'both';
 
+export interface PlaybackPolicy {
+  autoNext: boolean;
+  startPaused: boolean;
+  completionThreshold: number;
+  resumeThresholdSeconds: number;
+  prefetchNext: boolean;
+  [key: string]: unknown;
+}
+
+export interface PlaybackQueue {
+  profileId: string;
+  media: MediaItem;
+  episodes: Episode[];
+  currentIndex: number;
+  dubStatus?: DubStatus;
+  season?: number;
+  [key: string]: unknown;
+}
+
 export interface MediaRef {
   mediaId: string;
   providerId: string;
@@ -419,12 +438,14 @@ export interface GlobalSettings {
   appearance: AppearanceSettings;
   defaultProfileId?: string;
   autoSelectProfile?: boolean;
+  playback: PlaybackPolicy;
   [key: string]: unknown;
 }
 
 export interface ProfileSettings {
   appearance?: AppearanceSettings;
   selectedProvider?: string;
+  playback?: PlaybackPolicy;
   [key: string]: unknown;
 }
 
@@ -502,6 +523,10 @@ export interface PlayerState {
   episodeId?: string | null;
   profileId?: string | null;
   endReason?: string | null;
+  hasNext?: boolean;
+  hasPrev?: boolean;
+  queueIndex?: number | null;
+  queueCount?: number | null;
 }
 
 export type PlayerEvent =
@@ -509,4 +534,5 @@ export type PlayerEvent =
   | { type: 'file_loaded'; sessionId: string }
   | { type: 'end_file'; sessionId: string; reason: string }
   | { type: 'shutdown'; sessionId: string }
-  | { type: 'error'; sessionId: string; message: string };
+  | { type: 'error'; sessionId: string; message: string }
+  | { type: 'queue_updated'; queue?: PlaybackQueue | null };

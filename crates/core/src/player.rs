@@ -22,6 +22,8 @@ pub struct Player {
     events_tx: broadcast::Sender<PlayerEvent>,
     current_watch: Arc<Mutex<Option<(WatchEntry, String)>>>,
     req_counter: Arc<AtomicU64>,
+    queue: Arc<RwLock<Option<PlaybackQueue>>>,
+    policy: Arc<RwLock<PlaybackPolicy>>,
 }
 
 struct ActiveSession {
@@ -43,6 +45,8 @@ impl Player {
             events_tx,
             current_watch: Arc::new(Mutex::new(None)),
             req_counter: Arc::new(AtomicU64::new(100)),
+            queue: Arc::new(RwLock::new(None)),
+            policy: Arc::new(RwLock::new(PlaybackPolicy::default())),
         }
     }
 
@@ -62,6 +66,40 @@ impl Player {
         self.current_watch.lock().await.as_ref().map(|(w, _)| w.clone())
     }
 
+    pub async fn queue(&self) -> Option<PlaybackQueue> {
+        self.queue.read().await.clone()
+    }
+
+    pub async fn set_queue(&self, queue: Option<PlaybackQueue>) {
+        *self.queue.write().await = queue.clone();
+        let (has_next, has_prev, q_idx, q_cnt) = if let Some(ref q) = queue {
+            (q.has_next(), q.has_prev(), Some(q.current_index), Some(q.episodes.len()))
+        } else {
+            (false, false, None, None)
+        };
+        let mut st = self.state.write().await;
+        st.has_next = has_next;
+        st.has_prev = has_prev;
+        st.queue_index = q_idx;
+        st.queue_count = q_cnt;
+        let cloned_st = st.clone();
+        drop(st);
+        let _ = self.events_tx.send(PlayerEvent::QueueUpdated { queue });
+        let _ = self.events_tx.send(PlayerEvent::StateChanged { state: cloned_st });
+    }
+
+    pub async fn policy(&self) -> PlaybackPolicy {
+        self.policy.read().await.clone()
+    }
+
+    pub async fn set_policy(&self, policy: PlaybackPolicy) {
+        *self.policy.write().await = policy;
+    }
+
+    pub fn broadcast_error(&self, session_id: String, message: String) {
+        let _ = self.events_tx.send(PlayerEvent::Error { session_id, message });
+    }
+
     pub async fn play(
         &self,
         stream: &Stream,
@@ -69,10 +107,16 @@ impl Player {
         watch: Option<WatchEntry>,
         resume: f64,
         profile_id: Option<&str>,
+        queue: Option<PlaybackQueue>,
     ) -> Result<String> {
         network_url(&stream.url)?;
         if !resume.is_finite() || resume < 0.0 {
             bail!("Invalid resume position")
+        }
+
+        if let Some(ref q) = queue {
+            *self.queue.write().await = Some(q.clone());
+            let _ = self.events_tx.send(PlayerEvent::QueueUpdated { queue: Some(q.clone()) });
         }
 
         self.stop().await;
@@ -203,6 +247,15 @@ impl Player {
             Arc::new(Mutex::new(HashMap::<u64, oneshot::Sender<Result<Value>>>::new()));
         let (read_half, mut write_half) = stream.into_split();
 
+        let (has_next, has_prev, q_idx, q_cnt) = {
+            let q_guard = self.queue.read().await;
+            if let Some(ref q) = *q_guard {
+                (q.has_next(), q.has_prev(), Some(q.current_index), Some(q.episodes.len()))
+            } else {
+                (false, false, None, None)
+            }
+        };
+
         let initial_state = PlayerState {
             session_id: Some(session_id.clone()),
             active: true,
@@ -226,6 +279,10 @@ impl Player {
             episode_id: watch.as_ref().map(|w| w.id.clone()),
             profile_id: Some(profile_id.clone()),
             end_reason: None,
+            has_next,
+            has_prev,
+            queue_index: q_idx,
+            queue_count: q_cnt,
         };
         *self.state.write().await = initial_state.clone();
         if let Some(w) = watch {

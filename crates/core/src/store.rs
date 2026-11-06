@@ -1253,7 +1253,10 @@ impl Store {
         let legacy_data_alias = crate::repository::plugin_id(&watch.item.provider_id, &watch.episode.data);
         self.put_alias(&legacy_data_alias, "episode", &episode_id)?;
 
-        let is_watched = watch.duration > 0.0 && watch.position >= 0.9 * watch.duration;
+        let threshold = self.get_settings()
+            .map(|s| s.global.playback.completion_threshold)
+            .unwrap_or(0.90);
+        let is_watched = watch.duration > 0.0 && watch.position >= threshold * watch.duration;
         let progress = WatchProgress {
             profile_id: profile_id.to_string(),
             media_id,
@@ -1438,7 +1441,9 @@ pub fn apply_settings_patch(
         }
 
         if normalized_patch.get("global").is_none()
-            && (scope == Some("global") || normalized_patch.get("appearance").is_some())
+            && (scope == Some("global")
+                || normalized_patch.get("appearance").is_some()
+                || normalized_patch.get("playback").is_some())
         {
             let mut global_patch = serde_json::Map::new();
             let mut root_patch = serde_json::Map::new();
@@ -1446,10 +1451,13 @@ pub fn apply_settings_patch(
             if let Some(app) = normalized_patch.get("appearance") {
                 global_patch.insert("appearance".to_string(), app.clone());
             }
+            if let Some(pb) = normalized_patch.get("playback") {
+                global_patch.insert("playback".to_string(), pb.clone());
+            }
 
             if let Some(obj) = normalized_patch.as_object() {
                 for (k, v) in obj {
-                    if k == "appearance" || k == "posterDensity" {
+                    if k == "appearance" || k == "posterDensity" || k == "playback" {
                         continue;
                     }
                     if scope == Some("global") {

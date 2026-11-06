@@ -800,7 +800,90 @@ impl Default for AppearanceSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub fn default_completion_threshold() -> f64 {
+    0.90
+}
+
+pub fn default_resume_threshold_seconds() -> f64 {
+    5.0
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackPolicy {
+    #[serde(default = "default_true")]
+    pub auto_next: bool,
+    #[serde(default)]
+    pub start_paused: bool,
+    #[serde(default = "default_completion_threshold")]
+    pub completion_threshold: f64,
+    #[serde(default = "default_resume_threshold_seconds")]
+    pub resume_threshold_seconds: f64,
+    #[serde(default = "default_true")]
+    pub prefetch_next: bool,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl Default for PlaybackPolicy {
+    fn default() -> Self {
+        Self {
+            auto_next: true,
+            start_paused: false,
+            completion_threshold: 0.90,
+            resume_threshold_seconds: 5.0,
+            prefetch_next: true,
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackQueue {
+    pub profile_id: String,
+    pub media: MediaItem,
+    pub episodes: Vec<Episode>,
+    pub current_index: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dub_status: Option<DubStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<i32>,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl PlaybackQueue {
+    pub fn current_episode(&self) -> Option<&Episode> {
+        self.episodes.get(self.current_index)
+    }
+
+    pub fn has_next(&self) -> bool {
+        self.current_index + 1 < self.episodes.len()
+    }
+
+    pub fn has_prev(&self) -> bool {
+        self.current_index > 0 && !self.episodes.is_empty()
+    }
+
+    pub fn next_episode(&self) -> Option<&Episode> {
+        if self.has_next() {
+            self.episodes.get(self.current_index + 1)
+        } else {
+            None
+        }
+    }
+
+    pub fn prev_episode(&self) -> Option<&Episode> {
+        if self.has_prev() {
+            self.episodes.get(self.current_index - 1)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalSettings {
     #[serde(default)]
@@ -809,6 +892,8 @@ pub struct GlobalSettings {
     pub default_profile_id: Option<String>,
     #[serde(default)]
     pub auto_select_profile: bool,
+    #[serde(default)]
+    pub playback: PlaybackPolicy,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -819,6 +904,7 @@ impl Default for GlobalSettings {
             appearance: AppearanceSettings::default(),
             default_profile_id: None,
             auto_select_profile: true,
+            playback: PlaybackPolicy::default(),
             extra: BTreeMap::new(),
         }
     }
@@ -859,13 +945,15 @@ pub struct UpdateProfileInput {
     pub remove_pin: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileSettings {
     #[serde(default)]
     pub appearance: Option<AppearanceSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playback: Option<PlaybackPolicy>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -878,7 +966,7 @@ pub fn default_settings_revision() -> u64 {
     1
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     #[serde(default = "default_settings_schema_version")]
@@ -978,6 +1066,14 @@ pub struct PlayerState {
     pub profile_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_reason: Option<String>,
+    #[serde(default)]
+    pub has_next: bool,
+    #[serde(default)]
+    pub has_prev: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_count: Option<usize>,
 }
 
 impl Default for PlayerState {
@@ -997,6 +1093,10 @@ impl Default for PlayerState {
             episode_id: None,
             profile_id: None,
             end_reason: None,
+            has_next: false,
+            has_prev: false,
+            queue_index: None,
+            queue_count: None,
         }
     }
 }
@@ -1009,4 +1109,5 @@ pub enum PlayerEvent {
     EndFile { session_id: String, reason: String },
     Shutdown { session_id: String },
     Error { session_id: String, message: String },
+    QueueUpdated { queue: Option<PlaybackQueue> },
 }

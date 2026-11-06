@@ -228,7 +228,41 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Playwright UI tests: `npm run test:ui` (22 passed, including new test `local profiles: create, pin lock, switch, library isolation, and confirmed delete`).
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
 
+### [T12] Rich details and episode browser
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Built a rich details view in `src/App.svelte` and `src/style.css` using optional backdrop hero glow (`backgroundPosterUrl`), logo (`logoUrl`), eyebrow, title, score/rating pill (`Star` with `/10` scale), year, runtime (`Clock`), content rating badge (`contentRating`), coming soon / next airing, tags, cast & characters carousel (with avatar, name, and role), recommendations rail, and provider links.
+  2. Implemented safe plot sanitization (`sanitizePlot`) stripping raw HTML and script tags so provider text cannot break UI or inject untrusted markup.
+  3. Built complete episode browser controls: season selector dropdown, structured dub/sub selector (filtering Sub, Dub, Both), 50-episode range chunking chips (`1–50`, `51–60`) for large anime/series, sort modes (oldest first / newest first), and enriched episode rows displaying synopsis, runtime, score, filler badge (`isFiller`), and dub status.
+  4. Ensured complete episode data preservation: episode identity, opaque provider `data`, and stable IDs are preserved when sorting or filtering, ensuring changing sort order never resets watched indicators.
+  5. Implemented play from start / resume button ("Resume {episode} ({mm}m)"), stream mirror reload button, bookmark / library status dropdown, favorite, subscription, and copy/share source link actions. Gated capabilities cleanly without dead buttons.
+  6. Implemented trailer playback with fallback handling that opens the trailer directly in the player without blocking episode resolution if trailers fail or are absent.
+  7. Added keyboard focus restoration on dismissal: pressing `Escape` or clicking "Back to browse" restores focus smoothly to the media card that opened details, even across DOM re-mounts using `[data-media-url]`.
+- **Validation:**
+  - Playwright UI tests: `npm run test:ui` (23 passed, including new test `rich details and episode browser: backdrop, safe plot, seasons, dub groups, episode ranges, trailers, and focus restoration`).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - All core tests: `cargo test -p cloudstream-core` (60 passed, 1 ignored).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
+### [T15] Episode queues, resume and automatic next
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Built playback queue of episode references (`PlaybackQueue`, `PlaybackPolicy`) in `crates/core/src/models.rs`, `src/lib/types.ts`, `src-tauri/src/main.rs`, and `src/App.svelte`. Resolves links just-in-time using worker and retains current index, season, and dub status without caching expiring resolved URLs.
+  2. Implemented desktop completion and resume policies: configurable completion threshold (default 90%), resume threshold (default 5.0 seconds), auto-next (default true), and start paused preferences in Settings and core `Store`.
+  3. Authoritative EOF advancement in `App::open`: advances queue on normal EOF only (`reason == "eof"`); manual user stops, window closure, or playback errors never unexpectedly advance.
+  4. Stream mirror position preservation: preserves current playback position across mirror changes without resetting to zero.
+  5. Profile queue isolation: clearing or switching profiles flushes progress, unloads queue, and prevents queue leakage across accounts.
+  6. Enriched player-bar controls and UI: Next episode (`SkipForward`), Previous episode (`SkipBack`), Seek 10s back (`RotateCcw`), Seek 10s forward (`RotateCw`), Play/Pause, Stop playback, and queue index badge (`Episode {n} of {total}`). Added Playback settings panel in Settings (`Auto-play next episode`, `Start video paused`, `Prefetch next episode`).
+- **Validation:**
+  - Rust tests: `cargo test --test playback_queue` (3 passed: `queue_navigation_and_state_updates`, `completion_and_resume_threshold_policy`, `auto_next_only_on_eof_and_profile_isolation`).
+  - All core tests: `cargo test -p cloudstream-core` (63 passed, 1 ignored).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (24 passed, including new test `playback queue: next/prev controls, queue index display, auto-next settings, and mirror position preservation`).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
 ## Next Ready Tasks
-- **[T12]** Rich details and episode browser (Depends on: T03, T10)
-- **[T15]** Episode queues, resume and automatic next (Depends on: T02, T10, T14)
 - **[T19]** Session-aware media transport and WebView integration boundary (Depends on: T03, T14)
+- **[T16]** Player controls, quality policy and decoding preferences (Depends on: T14, T15)
+- **[T13]** New-episode subscriptions and notifications (Depends on: T02, T10)
