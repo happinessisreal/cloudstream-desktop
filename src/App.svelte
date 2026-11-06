@@ -57,6 +57,10 @@
     Lock,
     Users,
     UserPlus,
+    Star,
+    Calendar,
+    ArrowUpDown,
+    Video,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage, onPlayerEvent } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -92,6 +96,9 @@
     Profile,
     CreateProfileInput,
     UpdateProfileInput,
+    TrailerData,
+    ActorData,
+    SeasonData,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -199,6 +206,12 @@
   let extensionTab = $state<'browse' | 'installed'>('browse');
   let details = $state<Details | null>(null);
   let selectedEpisode = $state<Episode | null>(null);
+  let selectedSeason = $state<number | 'all'>('all');
+  let selectedDubGroup = $state<string>('all');
+  let episodeRangeIndex = $state(0);
+  let episodeSortOrder = $state<'asc' | 'desc'>('asc');
+  let lastFocusedElement: HTMLElement | null = null;
+  let lastFocusedMediaUrl: string | null = null;
   let links = $state<Links | null>(null);
   let playerState = $state<PlayerState | null>(null);
   let toastTimer: ReturnType<typeof setTimeout>;
@@ -1271,10 +1284,206 @@
       selectedSearchProviders = [...selectedSearchProviders, providerId];
     }
   }
+  let pendingResumePosition = $state<number>(0);
+
+  const availableSeasons = $derived.by(() => {
+    if (!details) return [];
+    const seasons = new Set<number>();
+    if (details.seasons) {
+      for (const s of details.seasons) {
+        if (s.season !== undefined) seasons.add(s.season);
+      }
+    }
+    for (const ep of details.episodes) {
+      if (ep.season !== undefined) seasons.add(ep.season);
+    }
+    return Array.from(seasons).sort((a, b) => a - b);
+  });
+
+  const availableDubGroups = $derived.by(() => {
+    if (!details) return [];
+    const groups = new Set<string>();
+    if (details.dubGroups) {
+      for (const key of Object.keys(details.dubGroups)) {
+        groups.add(key);
+      }
+    }
+    for (const ep of details.episodes) {
+      if (ep.dubStatus && ep.dubStatus !== 'none') {
+        groups.add(ep.dubStatus === 'subbed' ? 'Sub' : ep.dubStatus === 'dubbed' ? 'Dub' : 'Both');
+      }
+    }
+    return Array.from(groups);
+  });
+
+  const filteredEpisodes = $derived.by(() => {
+    if (!details) return [];
+    let list = details.episodes;
+    if (selectedDubGroup !== 'all') {
+      if (details.dubGroups && details.dubGroups[selectedDubGroup]) {
+        list = details.dubGroups[selectedDubGroup];
+      } else {
+        list = list.filter((ep) => {
+          if (selectedDubGroup === 'Sub') return ep.dubStatus === 'subbed' || ep.dubStatus === 'both';
+          if (selectedDubGroup === 'Dub') return ep.dubStatus === 'dubbed' || ep.dubStatus === 'both';
+          return true;
+        });
+      }
+    }
+    if (selectedSeason !== 'all') {
+      list = list.filter((ep) => (ep.season ?? 1) === selectedSeason);
+    }
+    const cloned = [...list];
+    if (episodeSortOrder === 'desc') {
+      cloned.reverse();
+    }
+    return cloned;
+  });
+
+  const EPISODES_PER_CHUNK = 50;
+  const episodeRangeCount = $derived(Math.ceil(filteredEpisodes.length / EPISODES_PER_CHUNK));
+  const pagedEpisodes = $derived.by(() => {
+    if (filteredEpisodes.length <= EPISODES_PER_CHUNK) return filteredEpisodes;
+    const start = episodeRangeIndex * EPISODES_PER_CHUNK;
+    return filteredEpisodes.slice(start, start + EPISODES_PER_CHUNK);
+  });
+
+  const latestWatchProgress = $derived.by(() => {
+    if (!episodeProgresses.length) return null;
+    const withProgress = episodeProgresses.filter((p) => p.positionSeconds > 5);
+    if (!withProgress.length) return null;
+    return withProgress.sort((a, b) => b.updatedAtMs - a.updatedAtMs)[0];
+  });
+
+  const resumeEpisode = $derived.by(() => {
+    if (!latestWatchProgress || !details) return null;
+    return (
+      details.episodes.find((ep, i) => {
+        const id = ep.id ?? `${details!.item.mediaId}::s${ep.season ?? 1}e${ep.episode ?? i + 1}`;
+        return id === latestWatchProgress.episodeId || ep.data === latestWatchProgress.episodeId;
+      }) ?? details.episodes[0]
+    );
+  });
+
+  function sanitizePlot(text?: string | null): string {
+    if (!text) return 'This source did not provide a description.';
+    return text.replace(/<[^>]*>?/gm, '').trim();
+  }
+
+  function formatRuntime(seconds?: number): string {
+    if (!seconds || seconds <= 0) return '';
+    const mins = Math.round(seconds / 60);
+    if (mins >= 60) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+    return `${mins}m`;
+  }
+
+  function formatScore(score?: number, rating?: number): string {
+    const val = score ?? rating;
+    if (val === undefined || val === null || val <= 0) return '';
+    return (val > 10 ? (val / 10).toFixed(1) : val.toFixed(1)) + '/10';
+  }
+
+  function closeDetails() {
+    details = null;
+    links = null;
+    selectedEpisode = null;
+    selectedSeason = 'all';
+    selectedDubGroup = 'all';
+    episodeRangeIndex = 0;
+    episodeSortOrder = 'asc';
+    void tick().then(() => {
+      if (lastFocusedElement && document.contains(lastFocusedElement)) {
+        lastFocusedElement.focus();
+      } else if (lastFocusedMediaUrl) {
+        const el = document.querySelector<HTMLElement>(`[data-media-url="${CSS.escape(lastFocusedMediaUrl)}"]`);
+        el?.focus();
+      }
+      lastFocusedElement = null;
+      lastFocusedMediaUrl = null;
+    });
+  }
+
+  function shareMedia() {
+    if (!details) return;
+    const itemUrl = details.item.url;
+    const shareText = `${details.item.name} - ${itemUrl}`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(shareText).then(() => {
+        message('Title and source link copied to clipboard.');
+      }).catch(() => {
+        message(`Source: ${itemUrl}`);
+      });
+    } else {
+      message(`Source: ${itemUrl}`);
+    }
+  }
+
+  async function playTrailer(trailer: TrailerData) {
+    if (!trailer.extractorUrl) {
+      message('Trailer URL not available.');
+      return;
+    }
+    await task('play', async () => {
+      try {
+        const stream: Stream = {
+          name: `${details?.item.name ?? 'Media'} - Trailer`,
+          url: trailer.extractorUrl,
+          referer: trailer.referer ?? '',
+          quality: 0,
+          headers: trailer.headers ?? {},
+          streamType: 'VIDEO',
+        };
+        const initial = await call<PlayerState | string>('play', {
+          stream,
+          subtitles: [],
+          item: details?.item ?? null,
+          episode: null,
+          resume: 0,
+          profileId: activeProfile,
+        });
+        if (initial && typeof initial === 'object' && 'active' in initial && initial.active) {
+          playerState = initial;
+        } else if (!playerState) {
+          playerState = {
+            sessionId: typeof initial === 'string' ? initial : undefined,
+            active: true,
+            playing: true,
+            paused: false,
+            position: 0,
+            duration: 0,
+            volume: 100,
+            speed: 1,
+            itemName: `${details?.item.name ?? 'Media'} - Trailer`,
+            episodeName: null,
+            mediaId: details?.item.url ?? null,
+            episodeId: null,
+            profileId: activeProfile,
+          };
+        }
+        message('Trailer playing in mpv.');
+      } catch (e) {
+        message('Could not play trailer: ' + toErrorMessage(e));
+      }
+    });
+  }
+
   async function openItem(item: MediaItem) {
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      lastFocusedElement = document.activeElement;
+    }
+    lastFocusedMediaUrl = item.url ?? null;
     detailsAbortController?.abort();
     detailsAbortController = new AbortController();
     const currentSignal = detailsAbortController.signal;
+
+    selectedSeason = 'all';
+    selectedDubGroup = 'all';
+    episodeRangeIndex = 0;
+    episodeSortOrder = 'asc';
 
     await task('details', async () => {
       details = null;
@@ -1291,8 +1500,9 @@
       }
     });
   }
-  async function resolve(episode: Episode) {
+  async function resolve(episode: Episode, resume = 0) {
     if (!details) return;
+    pendingResumePosition = resume;
     const item = details.item;
     resolveAbortController?.abort();
     resolveAbortController = new AbortController();
@@ -1311,7 +1521,7 @@
       if (!links.streams.length) message('This extension returned no playable streams.');
     });
   }
-  async function playStream(stream: Stream, resume = 0) {
+  async function playStream(stream: Stream, resume = pendingResumePosition) {
     await task('play', async () => {
       const initial = await call<PlayerState | string>('play', {
         stream,
@@ -1620,8 +1830,16 @@
       event.preventDefault();
       openSearch();
     }
-    if (event.key === 'Escape' && showSuggestionsDropdown) {
-      showSuggestionsDropdown = false;
+    if (event.key === 'Escape') {
+      if (showSuggestionsDropdown) {
+        showSuggestionsDropdown = false;
+        return;
+      }
+      if (details && !modal) {
+        event.preventDefault();
+        closeDetails();
+        return;
+      }
     }
     if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
       event.preventDefault();
@@ -1981,49 +2199,106 @@
         </div>{/if}
 
       {#if details}
+        {#if details.backgroundPosterUrl || (details as any).backgroundPoster}
+          <div class="details-backdrop-hero">
+            <img src={details.backgroundPosterUrl ?? (details as any).backgroundPoster} alt="" referrerpolicy="no-referrer" />
+          </div>
+        {/if}
         <button
           class="back-button"
-          onclick={() => {
-            details = null;
-            links = null;
-          }}><ChevronLeft size={17} />Back to {page === 'library' ? 'library' : 'browse'}</button
-        >
+          onclick={closeDetails}
+        ><ChevronLeft size={17} />Back to {page === 'library' ? 'library' : 'browse'}</button>
         <section class="details-layout">
           <div class="detail-poster">
-            <Film size={70} strokeWidth={0.8} /><span>FROM YOUR SOURCES</span
-            >{#if details.item.posterUrl}<img
+            <Film size={70} strokeWidth={0.8} /><span>FROM YOUR SOURCES</span>
+            {#if details.item.posterUrl}
+              <img
                 alt={details.item.name}
                 src={details.item.posterUrl}
                 referrerpolicy="no-referrer"
-              />{/if}
+              />
+            {/if}
           </div>
           <div class="detail-copy">
+            {#if details.logoUrl || (details as any).logo}
+              <img class="detail-logo" src={details.logoUrl ?? (details as any).logo} alt={details.item.name} referrerpolicy="no-referrer" />
+            {/if}
             <span class="eyebrow"
-              >{details.item.mediaType ?? 'VIDEO'}{details.item.year
-                ? ` · ${details.item.year}`
+              >{details.item.mediaType?.replace('TvSeries', 'TV SERIES') ?? 'VIDEO'}{details.item.year || (details as any).year
+                ? ` · ${details.item.year ?? (details as any).year}`
                 : ''}</span
             >
             <h1>{details.item.name}</h1>
+
+            <div class="detail-meta-pills">
+              {#if details.item.score || details.item.rating || (details as any).score || (details as any).rating}
+                <span class="detail-meta-pill detail-rating-score">
+                  <Star size={13} fill="currentColor" />{formatScore(details.item.score ?? (details as any).score, details.item.rating ?? (details as any).rating)}
+                </span>
+              {/if}
+              {#if details.item.year || (details as any).year}
+                <span class="detail-meta-pill">
+                  {details.item.year ?? (details as any).year}
+                </span>
+              {/if}
+              {#if details.duration}
+                <span class="detail-meta-pill">
+                  <Clock size={13} />{formatRuntime(details.duration)}
+                </span>
+              {/if}
+              {#if details.contentRating}
+                <span class="detail-meta-pill content-rating-badge">{details.contentRating}</span>
+              {/if}
+              {#if (details as any).nextAiring || (details as any).status}
+                <span class="detail-meta-pill">
+                  {(details as any).nextAiring ?? (details as any).status}
+                </span>
+              {/if}
+              {#if details.comingSoon}
+                <span class="detail-meta-pill" style="color: #60a5fa;"><Calendar size={13} />Coming Soon</span>
+              {/if}
+              <span class="detail-meta-pill">{details.item.providerId}</span>
+            </div>
+
             <p class="detail-plot">
-              {details.plot ?? 'This source did not provide a description.'}
+              {sanitizePlot(details.plot)}
             </p>
             <div class="tags">
               {#each details.tags as tag}<span>{tag}</span>{/each}
             </div>
             <div class="button-row">
+              {#if latestWatchProgress && resumeEpisode}
+                <button
+                  class="button primary"
+                  disabled={!!busy}
+                  onclick={() => resolve(resumeEpisode, latestWatchProgress!.positionSeconds)}
+                >
+                  <Play size={18} fill="currentColor" />Resume {resumeEpisode.name || 'Episode'} ({Math.floor(latestWatchProgress.positionSeconds / 60)}m)
+                </button>
+              {/if}
               <button
-                class="button primary"
+                class="button {latestWatchProgress ? 'secondary' : 'primary'}"
                 disabled={!!busy || !details.episodes.length}
                 onclick={() => resolve(details!.episodes[0])}
-                >{#if busy === 'resolve'}<LoaderCircle class="spin" size={18} />{:else}<Play
+              >
+                {#if busy === 'resolve'}<LoaderCircle class="spin" size={18} />{:else}<Play
                     size={18}
                     fill="currentColor"
-                  />{/if}Find a stream</button
-              ><button class="button secondary" disabled={!!busy} onclick={toggleBookmark}
-                >{#if detailSaved}<Check size={18} />{:else}<Bookmark size={18} />{/if}{detailSaved
+                  />{/if}{latestWatchProgress ? 'Play from start' : 'Find a stream'}
+              </button>
+              <button class="button secondary" disabled={!!busy} onclick={toggleBookmark}>
+                {#if detailSaved}<Check size={18} />{:else}<Bookmark size={18} />{/if}{detailSaved
                   ? 'Saved to library'
-                  : 'Save to library'}</button
-              >
+                  : 'Save to library'}
+              </button>
+              {#if details.trailers?.length}
+                <button class="button secondary" disabled={!!busy} onclick={() => playTrailer(details!.trailers![0])}>
+                  <Video size={17} />Watch trailer
+                </button>
+              {/if}
+              <button class="icon-button" title="Share title link" onclick={shareMedia}>
+                <Share2 size={17} />
+              </button>
             </div>
             <div class="detail-library-controls">
               <div class="status-select-wrap">
@@ -2058,62 +2333,208 @@
             </div>
           </div>
         </section>
-        {#if links}<section class="section streams-section">
+
+        {#if details.actors?.length}
+          <section class="section cast-section">
+            <div class="section-title">
+              <h2>Cast & Characters</h2>
+              <span>{details.actors.length} actors</span>
+            </div>
+            <div class="cast-list">
+              {#each details.actors as actorData}
+                {@const act = actorData.actor ?? (actorData as any)}
+                <div class="cast-card">
+                  {#if act.image}
+                    <img class="cast-avatar" src={act.image} alt={act.name} referrerpolicy="no-referrer" />
+                  {:else}
+                    <div class="cast-avatar fallback-avatar"><Users size={22} /></div>
+                  {/if}
+                  <span class="cast-name" title={act.name}>{act.name ?? 'Unknown'}</span>
+                  {#if actorData.role || actorData.roleString}
+                    <span class="cast-role" title={actorData.role || actorData.roleString}>{actorData.role || actorData.roleString}</span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if links}
+          <section class="section streams-section">
             <div class="section-title">
               <h2>Choose a stream</h2>
-              <span>{links.streams.length} available</span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span>{links.streams.length} available</span>
+                <button
+                  type="button"
+                  class="button secondary small"
+                  disabled={!!busy || !selectedEpisode}
+                  onclick={() => selectedEpisode && resolve(selectedEpisode)}
+                >
+                  <RefreshCw size={13} />Reload streams
+                </button>
+              </div>
             </div>
-            {#each links.streams as stream}<button
+            {#each links.streams as stream}
+              <button
                 class="stream-row"
                 disabled={!!busy}
                 onclick={() => playStream(stream)}
-                ><span class="source-icon"><Play size={18} /></span>
+              >
+                <span class="source-icon"><Play size={18} /></span>
                 <div>
-                  <strong>{stream.name}</strong><span
-                    >{stream.quality > 0 ? `${stream.quality}p · ` : ''}{stream.streamType}</span
-                  >
+                  <strong>{stream.name}</strong>
+                  <span>{stream.quality > 0 ? `${stream.quality}p · ` : ''}{stream.streamType}</span>
                 </div>
-                <span class="stream-play">Play in mpv <ArrowUpRight size={16} /></span></button
-              >{/each}{#if !links.streams.length}<p class="muted">
+                <span class="stream-play">Play in mpv <ArrowUpRight size={16} /></span>
+              </button>
+            {/each}
+            {#if !links.streams.length}
+              <p class="muted">
                 No streams returned. Try another episode or source.
-              </p>{/if}
-          </section>{/if}
+              </p>
+            {/if}
+          </section>
+        {/if}
+
         <section class="section">
           <div class="section-title">
             <h2>{details.episodes.length > 1 ? 'Episodes' : 'Watch'}</h2>
-            <span>{details.episodes.length} {details.episodes.length === 1 ? 'item' : 'items'}</span
-            >
+            <span>{filteredEpisodes.length} {filteredEpisodes.length === 1 ? 'item' : 'items'}</span>
           </div>
-          {#each details.episodes as episode, i}<div
-              class="episode-item-wrap"
-              class:watched={isEpisodeWatched(episode, i)}
-            ><button
+
+          {#if availableSeasons.length > 1 || availableDubGroups.length > 1 || details.episodes.length > 1}
+            <div class="episode-controls-bar">
+              <div class="episode-controls-left">
+                {#if availableSeasons.length > 1}
+                  <select
+                    class="filter-select"
+                    aria-label="Filter by season"
+                    value={selectedSeason}
+                    onchange={(e) => {
+                      selectedSeason = e.currentTarget.value === 'all' ? 'all' : Number(e.currentTarget.value);
+                      episodeRangeIndex = 0;
+                    }}
+                  >
+                    <option value="all">All Seasons</option>
+                    {#each availableSeasons as s}
+                      <option value={s}>Season {s}</option>
+                    {/each}
+                  </select>
+                {/if}
+
+                {#if availableDubGroups.length > 1}
+                  <select
+                    class="filter-select"
+                    aria-label="Filter by audio dub"
+                    value={selectedDubGroup}
+                    onchange={(e) => {
+                      selectedDubGroup = e.currentTarget.value;
+                      episodeRangeIndex = 0;
+                    }}
+                  >
+                    <option value="all">All Audio</option>
+                    {#each availableDubGroups as dg}
+                      <option value={dg}>{dg}</option>
+                    {/each}
+                  </select>
+                {/if}
+
+                {#if episodeRangeCount > 1}
+                  <div class="episode-range-chips" role="radiogroup" aria-label="Episode ranges">
+                    {#each Array.from({ length: episodeRangeCount }) as _, rIdx}
+                      <button
+                        type="button"
+                        class="range-chip"
+                        class:active={episodeRangeIndex === rIdx}
+                        onclick={() => (episodeRangeIndex = rIdx)}
+                      >
+                        {rIdx * EPISODES_PER_CHUNK + 1}–{Math.min((rIdx + 1) * EPISODES_PER_CHUNK, filteredEpisodes.length)}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+
+              <div class="episode-controls-right">
+                <button
+                  type="button"
+                  class="button secondary small"
+                  onclick={() => (episodeSortOrder = episodeSortOrder === 'asc' ? 'desc' : 'asc')}
+                  title="Toggle episode sort order"
+                >
+                  <ArrowUpDown size={13} />
+                  {episodeSortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
+                </button>
+              </div>
+            </div>
+          {/if}
+
+          {#each pagedEpisodes as episode, i}
+            {@const globalIdx = episodeRangeIndex * EPISODES_PER_CHUNK + i}
+            {@const watched = isEpisodeWatched(episode, globalIdx)}
+            <div class="episode-item-wrap" class:watched={watched}>
+              <button
                 class="episode-row"
                 disabled={!!busy}
                 onclick={() => resolve(episode)}
-                ><span class="episode-number">{String(i + 1).padStart(2, '0')}</span><span
-                  >{episode.name}</span
-                >{#if episode.season}<small>Season {episode.season}</small>{/if}<Play
-                  size={17}
-                /></button
-              ><div class="episode-actions">
+              >
+                <span class="episode-number">{String(episode.episode ?? globalIdx + 1).padStart(2, '0')}</span>
+                <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-weight: 500;">{episode.name}</span>
+                    {#if (episode as any).isFiller}
+                      <span class="filler-badge">FILLER</span>
+                    {/if}
+                  </div>
+                  {#if episode.description}
+                    <p class="episode-synopsis">{sanitizePlot(episode.description)}</p>
+                  {/if}
+                  <div class="episode-meta-tags">
+                    {#if episode.season}<small>S{episode.season}</small>{/if}
+                    {#if episode.episode}<small>E{episode.episode}</small>{/if}
+                    {#if episode.runTime}<small>{formatRuntime(episode.runTime * 60)}</small>{/if}
+                    {#if episode.score || episode.rating}<small>⭐ {formatScore(episode.score, episode.rating)}</small>{/if}
+                    {#if episode.dubStatus && episode.dubStatus !== 'none'}
+                      <small style="text-transform: capitalize;">{episode.dubStatus}</small>
+                    {/if}
+                  </div>
+                </div>
+                <Play size={17} />
+              </button>
+              <div class="episode-actions">
                 <button
                   class="watched-toggle-btn"
-                  class:is-watched={isEpisodeWatched(episode, i)}
-                  title={isEpisodeWatched(episode, i) ? 'Mark unwatched' : 'Mark watched'}
+                  class:is-watched={watched}
+                  title={watched ? 'Mark unwatched' : 'Mark watched'}
                   disabled={!!busy}
-                  onclick={() => toggleEpisodeWatched(episode, i)}
-                >{#if isEpisodeWatched(episode, i)}<CheckCheck size={16} />{:else}<Circle size={16} />{/if}</button>
-                {#if details.episodes.length > 1}<button
+                  onclick={() => toggleEpisodeWatched(episode, globalIdx)}
+                >
+                  {#if watched}<CheckCheck size={16} />{:else}<Circle size={16} />{/if}
+                </button>
+                {#if details.episodes.length > 1}
+                  <button
                     class="mark-up-to-btn"
                     title="Mark watched up to here"
                     disabled={!!busy}
-                    onclick={() => markUpToEpisode(episode, i)}
-                  ><CheckCheck size={13} />Up to here</button
-                >{/if}
+                    onclick={() => markUpToEpisode(episode, globalIdx)}
+                  >
+                    <CheckCheck size={13} />Up to here
+                  </button>
+                {/if}
               </div>
-            </div>{/each}
+            </div>
+          {/each}
         </section>
+
+        {#if details.recommendations?.length}
+          <MediaRail
+            title="You might also like"
+            items={details.recommendations}
+            onopen={openItem}
+            onexpand={() => {}}
+          />
+        {/if}
       {:else if page === 'discover'}
         <div class="page-heading home-heading">
           <div>

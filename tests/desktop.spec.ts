@@ -14,6 +14,13 @@ async function desktopFixture(page: Page, unsupported = false) {
       mediaType: 'Movie',
       year: 2008,
     };
+    const mixedSeriesItem = {
+      providerId: item.providerId,
+      name: 'Anime Adventure',
+      url: 'https://example.com/mixed-series',
+      mediaType: 'Anime',
+      posterUrl: 'https://example.com/poster.jpg',
+    };
     const episode = {
       name: item.name,
       data: '{"opaque":"episode data, 日本語"}',
@@ -185,10 +192,16 @@ async function desktopFixture(page: Page, unsupported = false) {
           if (args.query === 'first slow search') {
             await new Promise((resolve) => setTimeout(resolve, 800));
           }
-          return {
-            items: String(args.query).toLowerCase().includes('bunny') ? [item] : [],
-            hasNext: args.page === 1 && String(args.query).toLowerCase().includes('bunny'),
-          };
+          {
+            const q = String(args.query).toLowerCase();
+            const matches = [];
+            if (q.includes('bunny')) matches.push(item);
+            if (q.includes('anime') || q.includes('mixed')) matches.push(mixedSeriesItem);
+            return {
+              items: matches,
+              hasNext: args.page === 1 && q.includes('bunny'),
+            };
+          }
         case 'get_search_history':
           return (state as any).searchHistory || [];
         case 'add_search_history': {
@@ -225,19 +238,86 @@ async function desktopFixture(page: Page, unsupported = false) {
           }
           return list;
         }
-        case 'quick_search':
+        case 'quick_search': {
+          const q = String(args.query || '').toLowerCase();
+          const matches = [];
+          if (q.includes('bunny')) matches.push(item);
+          if (q.includes('anime') || q.includes('mixed')) matches.push(mixedSeriesItem);
           return {
-            items: String(args.query).toLowerCase().includes('bunny') ? [item] : [],
+            items: matches,
             hasNext: false,
           };
-        case 'load_details':
+        }
+        case 'load_details': {
+          if (args.url?.includes('mixed-series') || args.item?.url?.includes('mixed-series')) {
+            const episodes = [];
+            for (let i = 1; i <= 60; i++) {
+              episodes.push({
+                name: `Episode ${i}`,
+                season: i <= 30 ? 1 : 2,
+                episode: i <= 30 ? i : i - 30,
+                data: `{"opaque":"anime_ep_${i}_data"}`,
+                id: `mixed_series_ep_${i}`,
+                description: i === 1 ? '<b>Special premiere</b> episode.' : `Synopsis for episode ${i}`,
+                isFiller: i === 5,
+                runTime: 24,
+                score: 8.5,
+                dubStatus: i % 2 === 0 ? 'dubbed' : 'subbed',
+              });
+            }
+            return {
+              item: mixedSeriesItem,
+              plot: '<p>A <i>thrilling</i> adventure across worlds.</p>',
+              tags: ['Action', 'Fantasy'],
+              episodes,
+              year: 2024,
+              duration: 24 * 60,
+              rating: 88,
+              contentRating: 'TV-14',
+              status: 'Airing',
+              nextAiring: 'Next Sunday',
+              backgroundPoster: 'https://example.com/backdrop.jpg',
+              logo: 'https://example.com/logo.png',
+              trailers: [
+                {
+                  raw: 'https://example.com/trailer.mp4',
+                  extractorUrl: 'https://example.com/trailer.mp4',
+                  name: 'Official PV 1',
+                },
+              ],
+              actors: [
+                {
+                  name: 'Hero Voice',
+                  role: 'Protagonist',
+                  image: 'https://example.com/hero.jpg',
+                },
+                {
+                  name: 'Rival Voice',
+                  role: 'Antagonist',
+                },
+              ],
+              recommendations: [item],
+            };
+          }
           return {
             item,
-            plot: 'An open movie from the Blender Foundation.',
+            plot: 'An open movie from the <b>Blender Foundation</b>.',
             tags: ['Animation'],
             episodes: [episode],
             duration: 1,
+            year: 2008,
+            rating: 85,
+            contentRating: 'G',
+            backgroundPoster: 'https://example.com/bbb-bg.jpg',
+            actors: [
+              {
+                name: 'Blender Cast',
+                role: 'Creator',
+              },
+            ],
+            recommendations: [mixedSeriesItem],
           };
+        }
         case 'resolve_links':
           return {
             streams: [
@@ -1245,4 +1325,126 @@ test('local profiles: create, pin lock, switch, library isolation, and confirmed
   await page.getByRole('button', { name: 'Extensions', exact: true }).click();
   await page.getByRole('button', { name: /Installed/ }).click();
   await expect(page.getByRole('heading', { name: 'Blender Open Movies' })).toBeVisible();
+});
+
+test('rich details and episode browser: backdrop, safe plot, seasons, dub groups, episode ranges, trailers, and focus restoration', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+  // Search for the anime series
+  const searchInput = page.getByLabel('Search your selected source');
+  await searchInput.fill('Anime');
+  await searchInput.press('Enter');
+
+  const animeCard = page.locator('.media-card', { hasText: 'Anime Adventure' });
+  await expect(animeCard).toBeVisible();
+
+  // Focus and open details
+  await animeCard.focus();
+  await page.keyboard.press('Enter');
+
+  // Verify title
+  await expect(page.getByRole('heading', { name: 'Anime Adventure', exact: true })).toBeVisible();
+
+  // Verify safe plot rendering (raw HTML stripped)
+  const plot = page.locator('.detail-plot');
+  await expect(plot).toContainText('A thrilling adventure across worlds.');
+  await expect(plot.locator('p')).toHaveCount(0);
+  await expect(plot.locator('i')).toHaveCount(0);
+
+  // Verify meta pills
+  await expect(page.getByText('TV-14')).toBeVisible();
+  await expect(page.getByText('2024', { exact: true })).toBeVisible();
+  await expect(page.getByText('8.8/10')).toBeVisible();
+  await expect(page.getByText('Next Sunday')).toBeVisible();
+
+  // Verify cast & characters
+  await expect(page.getByText('Hero Voice')).toBeVisible();
+  await expect(page.getByText('Protagonist')).toBeVisible();
+  await expect(page.getByText('Rival Voice')).toBeVisible();
+
+  // Verify recommendations rail
+  await expect(page.getByRole('heading', { name: 'You might also like' })).toBeVisible();
+
+  // Test trailer playback
+  const trailerBtn = page.getByRole('button', { name: 'Watch trailer' });
+  await expect(trailerBtn).toBeVisible();
+  await trailerBtn.click();
+  // Player state becomes active
+  await expect(page.getByLabel('Pause playback')).toBeVisible();
+  const playCalls = await page.evaluate(() =>
+    (window as any).__calls.filter((c: any) => c.command === 'play'),
+  );
+  expect(playCalls.at(-1).args.stream.url).toBe('https://example.com/trailer.mp4');
+  await page.getByLabel('Stop playback').click();
+
+  // Episode browser controls
+  // 1. Season selection: Season 1 and Season 2
+  const seasonSelect = page.getByLabel('Filter by season');
+  await expect(seasonSelect).toBeVisible();
+  await seasonSelect.selectOption('2');
+  // Only Season 2 episodes should be in list (starts with Episode 31)
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 31\b/ })).toBeVisible();
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 1\b/ })).toHaveCount(0);
+  await seasonSelect.selectOption('all');
+
+  // 2. Dub/Sub selection: Sub and Dub
+  const dubSelect = page.getByLabel('Filter by audio dub');
+  await expect(dubSelect).toBeVisible();
+  await dubSelect.selectOption('Dub');
+  // Only dubbed episodes (even numbers: 2, 4...)
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 2\b/ })).toBeVisible();
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 1\b/ })).toHaveCount(0);
+  await dubSelect.selectOption('all');
+
+  // 3. Episode ranges: 1–50 and 51–60
+  await expect(page.getByRole('button', { name: /1[–-]50/ })).toBeVisible();
+  const range2Btn = page.getByRole('button', { name: /51[–-]60/ });
+  await expect(range2Btn).toBeVisible();
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 50\b/ })).toBeVisible();
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 51\b/ })).not.toBeVisible();
+
+  await range2Btn.click();
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 51\b/ })).toBeVisible();
+  await expect(page.locator('.episode-row', { hasText: /\bEpisode 50\b/ })).not.toBeVisible();
+
+  await page.getByRole('button', { name: /1[–-]50/ }).click();
+
+  // 4. Filler badge
+  await expect(page.locator('.filler-badge')).toContainText('FILLER');
+
+  // 5. Episode Sort Order & Watched State Invariance
+  // Mark Episode 1 watched
+  const ep1Row = page.locator('.episode-item-wrap', { hasText: /\bEpisode 1\b/ });
+  await ep1Row.locator('.watched-toggle-btn').click();
+  await expect(ep1Row.locator('.watched-toggle-btn')).toHaveClass(/is-watched/);
+
+  // Toggle sort order to Newest first
+  const sortBtn = page.getByRole('button', { name: /first/i });
+  await sortBtn.click();
+  await expect(sortBtn).toContainText('Newest first');
+
+  // After reversing, Episode 1 is now in the second chunk (51–60)
+  await page.getByRole('button', { name: /51[–-]60/ }).click();
+  const ep1Reversed = page.locator('.episode-item-wrap', { hasText: /\bEpisode 1\b/ });
+  await expect(ep1Reversed).toBeVisible();
+  // Ensure watched state is INVARIANT to sort order
+  await expect(ep1Reversed.locator('.watched-toggle-btn')).toHaveClass(/is-watched/);
+
+  // Switch back to Oldest first
+  await sortBtn.click();
+  await expect(sortBtn).toContainText('Oldest first');
+  await page.getByRole('button', { name: /1[–-]50/ }).click();
+
+  // 6. Episode opaque data preservation on resolve
+  await page.locator('.episode-row', { hasText: /\bEpisode 1\b/ }).click();
+  const resolveCalls = await page.evaluate(() =>
+    (window as any).__calls.filter((c: any) => c.command === 'resolve_links'),
+  );
+  expect(resolveCalls.at(-1).args.data).toBe('{"opaque":"anime_ep_1_data"}');
+  await expect(page.getByRole('heading', { name: 'Choose a stream' })).toBeVisible();
+
+  // 7. Focus restoration on Escape
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('heading', { name: 'Anime Adventure', exact: true })).not.toBeVisible();
+  await expect(animeCard).toBeFocused();
 });

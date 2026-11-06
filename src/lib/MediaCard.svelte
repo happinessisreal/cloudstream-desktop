@@ -18,6 +18,7 @@
   class="media-card"
   class:horizontal={orientation === 'horizontal'}
   {onclick}
+  data-media-url={item.url}
   aria-label={`Open ${item.name}`}
   style={`--card-hue:${220 + ((index * 19) % 45)}`}
 >
