@@ -50,7 +50,7 @@ impl App {
         } else {
             PathBuf::from("java")
         };
-        Ok(Arc::new(Self {
+        let app = Arc::new(Self {
             store: Store::open(&data.join("cloudstream.db"))?,
             repositories: RepositoryManager::new(ext_dir)?,
             worker: Worker::new(WorkerConfig {
@@ -63,7 +63,43 @@ impl App {
             mutation: Mutex::new(()),
             client_requests: Mutex::new(std::collections::HashMap::new()),
             home_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
-        }))
+        });
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let flusher = app.clone();
+            handle.spawn(async move {
+                let mut rx = flusher.player.subscribe();
+                let mut last_saved_pos: f64 = 0.0;
+                let mut last_saved_time = std::time::Instant::now();
+                let mut current_session: Option<String> = None;
+
+                while let Ok(event) = rx.recv().await {
+                    match event {
+                        PlayerEvent::StateChanged { ref state } => {
+                            if state.session_id != current_session {
+                                current_session = state.session_id.clone();
+                                last_saved_pos = state.position;
+                                last_saved_time = std::time::Instant::now();
+                            }
+                            let pos_delta = (state.position - last_saved_pos).abs();
+                            let time_elapsed = last_saved_time.elapsed().as_secs();
+                            if state.paused || (pos_delta >= 5.0 && time_elapsed >= 5) {
+                                let _ = flusher.flush_player_progress().await;
+                                last_saved_pos = state.position;
+                                last_saved_time = std::time::Instant::now();
+                            }
+                        }
+                        PlayerEvent::EndFile { .. } | PlayerEvent::Shutdown { .. } => {
+                            let _ = flusher.flush_player_progress().await;
+                            current_session = None;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
+
+        Ok(app)
     }
     pub async fn status(&self) -> RuntimeStatus {
         let bundled_java = self.resources.join("jre/bin/java");
@@ -887,8 +923,10 @@ impl App {
         item: Option<MediaItem>,
         episode: Option<Episode>,
         resume: f64,
-    ) -> Result<()> {
-        self.save_progress().await?;
+        profile_id: Option<&str>,
+    ) -> Result<String> {
+        let _ = self.save_progress().await;
+        let profile_id_str = profile_id.unwrap_or("default");
         let watch = match (item, episode) {
             (Some(mut item), Some(mut episode)) => {
                 let media_id =
@@ -906,7 +944,7 @@ impl App {
                 let effective_resume = if resume > 0.0 {
                     resume
                 } else if let Ok(Some(existing_progress)) =
-                    self.store.get_watch_progress("default", &episode_id)
+                    self.store.get_watch_progress(profile_id_str, &episode_id)
                 {
                     existing_progress.position_seconds
                 } else {
@@ -926,19 +964,25 @@ impl App {
             _ => None,
         };
         let start_pos = watch.as_ref().map(|w| w.position).unwrap_or(resume);
-        self.player
-            .play(&stream, &subtitles, watch.clone(), start_pos)
+        let session_id = self
+            .player
+            .play(&stream, &subtitles, watch.clone(), start_pos, Some(profile_id_str))
             .await?;
         if let Some(watch) = watch {
-            self.store.save_watch_entry(&watch, "default")?;
+            self.store.save_watch_entry(&watch, profile_id_str)?;
+        }
+        Ok(session_id)
+    }
+
+    pub async fn flush_player_progress(&self) -> Result<()> {
+        if let Some((watch, profile_id)) = self.player.current_watch().await {
+            self.store.save_watch_entry(&watch, &profile_id)?;
         }
         Ok(())
     }
+
     pub async fn save_progress(&self) -> Result<()> {
-        if let Some(watch) = self.player.progress().await? {
-            self.store.save_watch_entry(&watch, "default")?;
-        }
-        Ok(())
+        self.flush_player_progress().await
     }
 
     pub fn get_search_history(&self, profile_id: &str) -> Result<Vec<SearchHistoryEntry>> {

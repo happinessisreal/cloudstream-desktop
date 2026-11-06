@@ -187,7 +187,25 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Playwright UI tests: `npm run test:ui` (20 passed, including test for multi-row provider, category expansion, random actions, and library rails).
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
 
+### [T14] Authoritative mpv session state and events
+- **Status:** Completed
+- **Priority:** P0
+- **Completed Substeps:**
+  1. Re-architected mpv playback backend in `crates/core/src/player.rs` with persistent IPC connection, monotonic `request_id` correlation, and split Tokio `UnixStream` read/write tasks. Automatically registers property observers on startup for `time-pos`, `duration`, `pause`, `volume`, `speed`, and `track-list`. Handles `file-loaded`, `end-file` (with reason e.g. eof, stop, quit), `shutdown`, and command errors.
+  2. Implemented `PlayerState` and `PlayerEvent` models (`crates/core/src/models.rs`) carrying `sessionId`, `profileId`, `mediaId`, `episodeId`, `itemName`, and `episodeName`. Published typed player events over Tokio broadcast channel in Rust core and forwarded via Tauri `app_handle.emit("player_event", event)` in `src-tauri/src/main.rs`. Added `get_player_state` native command.
+  3. Integrated background progress flusher in `App` (`crates/core/src/lib.rs`): throttles progress events during active playback (saves on >= 5s interval and delta), and flushes immediately on pause, end-file, stop, and app close to the profile-scoped SQLite `watch_progress` and `history`.
+  4. Enforced safe IPC and process management: short private Unix-socket directories with `0o700` permissions, literal HTTP header escaping, and cleanup of only owned child processes and sockets. Stop is strictly idempotent and stale events from old sessions are rejected.
+  5. Updated frontend (`src/App.svelte`, `src/lib/types.ts`, `src/lib/api.ts`): replaced optimistic `nowPlaying`/`paused` state with authoritative `playerState`, listening to native `player_event` events so native mpv pauses/quits immediately update the desktop UI.
+- **Validation:**
+  - Rust tests: `cargo test --test player_session` (3 passed: fake IPC session state events/commands, stale events from old session rejection, and progress saved to profile on pause/shutdown).
+  - All core tests: `cargo test -p cloudstream-core` (59 passed, 1 ignored; including extended `player_linux.rs` native mpv integration).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (21 passed, including new test for authoritative mpv session events updating player bar, reflecting native pause and external exit).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
 ## Next Ready Tasks
 - **[T11]** Local profiles, startup selection and access locks (Depends on: T01, T02, T10)
 - **[T12]** Rich details and episode browser (Depends on: T03, T10)
-- **[T14]** Authoritative mpv session state and events (Depends on: T02, T03)
+- **[T15]** Episode queues, resume and automatic next (Depends on: T02, T10, T14)
+- **[T19]** Session-aware media transport and WebView integration boundary (Depends on: T03, T14)

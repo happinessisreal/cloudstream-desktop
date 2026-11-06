@@ -913,3 +913,59 @@ pub fn to_epoch_millis(timestamp_or_seconds: u64) -> u64 {
         timestamp_or_seconds
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerState {
+    pub session_id: Option<String>,
+    pub active: bool,
+    pub playing: bool,
+    pub paused: bool,
+    pub position: f64,
+    pub duration: f64,
+    pub volume: f64,
+    pub speed: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub episode_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reason: Option<String>,
+}
+
+impl Default for PlayerState {
+    fn default() -> Self {
+        Self {
+            session_id: None,
+            active: false,
+            playing: false,
+            paused: false,
+            position: 0.0,
+            duration: 0.0,
+            volume: 100.0,
+            speed: 1.0,
+            item_name: None,
+            episode_name: None,
+            media_id: None,
+            episode_id: None,
+            profile_id: None,
+            end_reason: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PlayerEvent {
+    StateChanged { state: PlayerState },
+    FileLoaded { session_id: String },
+    EndFile { session_id: String, reason: String },
+    Shutdown { session_id: String },
+    Error { session_id: String, message: String },
+}

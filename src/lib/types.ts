@@ -460,3 +460,27 @@ export interface SearchFilters {
   quality: string;
   dubStatus: string;
 }
+
+export interface PlayerState {
+  sessionId?: string | null;
+  active: boolean;
+  playing: boolean;
+  paused: boolean;
+  position: number;
+  duration: number;
+  volume: number;
+  speed: number;
+  itemName?: string | null;
+  episodeName?: string | null;
+  mediaId?: string | null;
+  episodeId?: string | null;
+  profileId?: string | null;
+  endReason?: string | null;
+}
+
+export type PlayerEvent =
+  | { type: 'state_changed'; state: PlayerState }
+  | { type: 'file_loaded'; sessionId: string }
+  | { type: 'end_file'; sessionId: string; reason: string }
+  | { type: 'shutdown'; sessionId: string }
+  | { type: 'error'; sessionId: string; message: string };

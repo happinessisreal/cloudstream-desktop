@@ -1,9 +1,48 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import type { Settings, Snapshot } from './types';
+import { listen } from '@tauri-apps/api/event';
+import type { PlayerEvent, Settings, Snapshot } from './types';
+
+export type PlayerEventListener = (event: PlayerEvent) => void;
+
+let playerEventListeners: PlayerEventListener[] = [];
+
+export function emitPlayerEventForTest(event: PlayerEvent) {
+  for (const listener of playerEventListeners) {
+    listener(event);
+  }
+}
 
 declare global {
   interface Window {
     __CLOUDSTREAM_TEST__?: (command: string, args: Record<string, unknown>) => Promise<unknown>;
+    __emitPlayerEvent?: (event: PlayerEvent) => void;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__emitPlayerEvent = emitPlayerEventForTest;
+}
+
+export async function onPlayerEvent(callback: PlayerEventListener): Promise<() => void> {
+  playerEventListeners.push(callback);
+  const unlistenLocal = () => {
+    playerEventListeners = playerEventListeners.filter((l) => l !== callback);
+  };
+
+  if (!isTauri()) {
+    return unlistenLocal;
+  }
+
+  try {
+    const unlistenTauri = await listen<PlayerEvent>('player_event', (e) => {
+      callback(e.payload);
+    });
+    return () => {
+      unlistenLocal();
+      unlistenTauri();
+    };
+  } catch {
+    return unlistenLocal;
   }
 }
 

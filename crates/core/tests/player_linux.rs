@@ -56,9 +56,28 @@ async fn native_mpv_receives_literal_headers_and_accepts_playback_commands() {
         stream_type: "VIDEO".into(),
         ..Default::default()
     };
-    player.play(&stream, &[], None, 0.0).await.unwrap();
+    let mut rx = player.subscribe();
+    let session_id = player.play(&stream, &[], None, 0.0, Some("default")).await.unwrap();
+    assert!(!session_id.is_empty());
+
+    let mut state_observed = false;
     let mut duration = None;
     for _ in 0..30 {
+        if let Ok(event) = rx.try_recv() {
+            if let cloudstream_core::models::PlayerEvent::StateChanged { state } = event {
+                if state.active && state.duration > 0.0 {
+                    duration = Some(state.duration);
+                    state_observed = true;
+                    break;
+                }
+            }
+        }
+        let st = player.state().await;
+        if st.active && st.duration > 0.0 {
+            duration = Some(st.duration);
+            state_observed = true;
+            break;
+        }
         duration = player
             .command(json!(["get_property", "duration"]))
             .await
@@ -70,15 +89,22 @@ async fn native_mpv_receives_literal_headers_and_accepts_playback_commands() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     let pause = player.command(json!(["set_property", "pause", true])).await;
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    let state_after_pause = player.state().await;
     let seek = player.command(json!(["seek", 1, "absolute"])).await;
     player.stop().await;
+    let state_after_stop = player.state().await;
     server.abort();
+    assert!(state_observed || duration.is_some(), "mpv should report duration");
     assert!(
         duration.is_some_and(|d| (d - 3.0).abs() < 0.1),
         "mpv failed to decode the HTTP audio fixture"
     );
     assert!(pause.is_ok());
     assert!(seek.is_ok());
+    assert!(state_after_pause.paused, "state should reflect pause");
+    assert!(!state_after_stop.active, "state should be inactive after stop");
+    assert!(!state_after_stop.playing, "state should not be playing after stop");
     let requests = requests.lock().await;
     assert!(
         requests

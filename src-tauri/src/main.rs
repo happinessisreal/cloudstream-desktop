@@ -2,7 +2,7 @@
 use cloudstream_core::{models::*, App};
 use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 type Backend = Arc<App>;
 type Reply<T> = Result<T, String>;
 fn error(error: impl std::fmt::Display) -> String {
@@ -349,20 +349,29 @@ async fn play(
     item: Option<MediaItem>,
     episode: Option<Episode>,
     resume: f64,
-) -> Reply<()> {
-    app.play(stream, subtitles, item, episode, resume)
+    profile_id: Option<String>,
+) -> Reply<String> {
+    app.play(stream, subtitles, item, episode, resume, profile_id.as_deref())
         .await
         .map_err(error)
 }
+
+#[tauri::command]
+async fn get_player_state(app: State<'_, Backend>) -> Reply<PlayerState> {
+    Ok(app.player.state().await)
+}
+
 #[tauri::command]
 async fn player_action(app: State<'_, Backend>, action: String) -> Reply<Value> {
     let command = match action.as_str() {
+        "play" => json!(["set_property", "pause", false]),
         "pause" => json!(["cycle", "pause"]),
+        "toggle_pause" => json!(["cycle", "pause"]),
         "forward" => json!(["seek", 10]),
         "back" => json!(["seek", -10]),
         "fullscreen" => json!(["cycle", "fullscreen"]),
         "stop" => {
-            app.save_progress().await.map_err(error)?;
+            let _ = app.save_progress().await;
             app.player.stop().await;
             return Ok(Value::Null);
         }
@@ -386,13 +395,12 @@ fn main() {
                 });
             let backend = App::open(tauri_app.path().app_data_dir()?, resources)?;
             tauri_app.manage(backend.clone());
+            let player_backend = backend.clone();
+            let app_handle = tauri_app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
-                loop {
-                    interval.tick().await;
-                    if let Err(error) = backend.save_progress().await {
-                        eprintln!("Progress could not be saved: {error}");
-                    }
+                let mut rx = player_backend.player.subscribe();
+                while let Ok(event) = rx.recv().await {
+                    let _ = app_handle.emit("player_event", &event);
                 }
             });
             Ok(())
@@ -439,6 +447,7 @@ fn main() {
             mark_episode_watched,
             mark_episodes_up_to,
             play,
+            get_player_state,
             player_action,
             get_settings,
             update_settings

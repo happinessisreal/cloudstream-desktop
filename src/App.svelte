@@ -55,7 +55,7 @@
     Shuffle,
     Sparkles,
   } from 'lucide-svelte';
-  import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage } from './lib/api';
+  import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage, onPlayerEvent } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
   import MediaRail from './lib/MediaRail.svelte';
   import Spotlight from './lib/Spotlight.svelte';
@@ -84,6 +84,8 @@
     SearchFilters,
     WatchStatus,
     WatchProgress,
+    PlayerState,
+    PlayerEvent,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -168,8 +170,7 @@
   let details = $state<Details | null>(null);
   let selectedEpisode = $state<Episode | null>(null);
   let links = $state<Links | null>(null);
-  let nowPlaying = $state('');
-  let paused = $state(false);
+  let playerState = $state<PlayerState | null>(null);
   let toastTimer: ReturnType<typeof setTimeout>;
   let dialogElement: HTMLDialogElement;
   let searchInput: HTMLInputElement;
@@ -1132,15 +1133,33 @@
   }
   async function playStream(stream: Stream, resume = 0) {
     await task('play', async () => {
-      await call('play', {
+      const initial = await call<PlayerState | string>('play', {
         stream,
         subtitles: links?.subtitles ?? [],
         item: details?.item ?? null,
         episode: selectedEpisode,
         resume,
+        profileId: activeProfile,
       });
-      nowPlaying = details?.item.name ?? 'Direct stream';
-      paused = false;
+      if (initial && typeof initial === 'object' && 'active' in initial && initial.active) {
+        playerState = initial;
+      } else if (!playerState) {
+        playerState = {
+          sessionId: typeof initial === 'string' ? initial : undefined,
+          active: true,
+          playing: true,
+          paused: false,
+          position: resume,
+          duration: 0,
+          volume: 100,
+          speed: 1,
+          itemName: details?.item.name ?? 'Direct stream',
+          episodeName: selectedEpisode?.name ?? null,
+          mediaId: details?.item.url ?? null,
+          episodeId: selectedEpisode?.name ?? null,
+          profileId: activeProfile,
+        };
+      }
       modal = null;
       message('Playback opened in mpv.');
       await refresh();
@@ -1157,9 +1176,30 @@
       streamType: 'VIDEO',
     };
     await task('play', async () => {
-      await call('play', { stream, subtitles: [], item: null, episode: null, resume: 0 });
-      nowPlaying = 'Direct stream';
-      paused = false;
+      const initial = await call<PlayerState | string>('play', {
+        stream,
+        subtitles: [],
+        item: null,
+        episode: null,
+        resume: 0,
+        profileId: activeProfile,
+      });
+      if (initial && typeof initial === 'object' && 'active' in initial && initial.active) {
+        playerState = initial;
+      } else if (!playerState) {
+        playerState = {
+          sessionId: typeof initial === 'string' ? initial : undefined,
+          active: true,
+          playing: true,
+          paused: false,
+          position: 0,
+          duration: 0,
+          volume: 100,
+          speed: 1,
+          itemName: 'Direct stream',
+          profileId: activeProfile,
+        };
+      }
       modal = null;
       message('Playback opened in mpv.');
     });
@@ -1333,21 +1373,39 @@
       });
       if (!resolved.streams.length)
         throw new Error('No playable stream was returned. Open the title and try another source.');
-      await call('play', {
+      const initial = await call<PlayerState | string>('play', {
         stream: resolved.streams[0],
         subtitles: resolved.subtitles,
         item: loaded.item,
         episode,
         resume: watch.position,
+        profileId: activeProfile,
       });
+      if (initial && typeof initial === 'object' && 'active' in initial && initial.active) {
+        playerState = initial;
+      } else if (!playerState) {
+        playerState = {
+          sessionId: typeof initial === 'string' ? initial : undefined,
+          active: true,
+          playing: true,
+          paused: false,
+          position: watch.position,
+          duration: watch.duration,
+          volume: 100,
+          speed: 1,
+          itemName: loaded.item.name,
+          episodeName: episode.name,
+          mediaId: loaded.item.url,
+          episodeId: episode.name,
+          profileId: activeProfile,
+        };
+      }
       details = loaded;
       if (details?.item) {
         await loadEpisodeProgresses();
       }
       selectedEpisode = episode;
       links = resolved;
-      nowPlaying = loaded.item.name;
-      paused = false;
       await refresh();
     });
   }
@@ -1355,10 +1413,14 @@
     try {
       await call('player_action', { action });
       if (action === 'stop') {
-        nowPlaying = '';
+        playerState = null;
         await refresh();
+      } else if (action === 'pause' || action === 'play') {
+        if (playerState) {
+          const p = action === 'pause';
+          playerState = { ...playerState, paused: p, playing: !p };
+        }
       }
-      if (action === 'pause') paused = !paused;
     } catch (e) {
       showError(e);
     }
@@ -1387,7 +1449,25 @@
       void tick().then(() => searchInput?.focus());
     }
   }
+  let unlistenPlayer: (() => void) | undefined;
   onMount(() => {
+    void call<PlayerState>('get_player_state').then((st) => {
+      if (st?.active) playerState = st;
+    }).catch(() => {});
+    void onPlayerEvent((event) => {
+      if (event.type === 'state_changed') {
+        playerState = event.state.active ? event.state : null;
+      } else if (event.type === 'shutdown' || event.type === 'end_file') {
+        playerState = null;
+        void refresh();
+      } else if (event.type === 'error') {
+        message(event.message);
+        playerState = null;
+      }
+    }).then((unlisten) => {
+      unlistenPlayer = unlisten;
+    });
+
     void refresh()
       .then(() => {
         if (selectedProvider) return chooseProvider(selectedProvider);
@@ -1396,7 +1476,10 @@
         ready = true;
         showError(e);
       });
-    return () => clearTimeout(toastTimer);
+    return () => {
+      clearTimeout(toastTimer);
+      unlistenPlayer?.();
+    };
   });
   onDestroy(() => {
     searchAbortController?.abort();
@@ -2714,15 +2797,18 @@
   </div>
 </div>
 
-{#if nowPlaying}<div class="player-bar">
+{#if playerState?.active}<div class="player-bar">
     <span class="playing-icon"><Film size={20} /></span>
-    <div><strong>{nowPlaying}</strong><span>Playing in mpv</span></div>
+    <div>
+      <strong>{playerState.itemName ?? 'Playing'}</strong>
+      <span>{playerState.episodeName ? playerState.episodeName : (playerState.paused ? 'Paused in mpv' : 'Playing in mpv')}</span>
+    </div>
     <button aria-label="Seek back ten seconds" onclick={() => playerAction('back')}
       ><SkipBack size={19} /></button
     ><button
-      aria-label={paused ? 'Resume playback' : 'Pause playback'}
-      onclick={() => playerAction('pause')}
-      >{#if paused}<Play size={20} />{:else}<Pause size={20} />{/if}</button
+      aria-label={playerState.paused ? 'Resume playback' : 'Pause playback'}
+      onclick={() => playerAction(playerState?.paused ? 'play' : 'pause')}
+      >{#if playerState.paused}<Play size={20} />{:else}<Pause size={20} />{/if}</button
     ><button aria-label="Seek forward ten seconds" onclick={() => playerAction('forward')}
       ><SkipForward size={19} /></button
     ><button aria-label="Stop playback" onclick={() => playerAction('stop')}

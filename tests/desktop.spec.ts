@@ -965,3 +965,59 @@ test('home multi-row provider, category expansion, random actions, and library r
   const calls = await page.evaluate(() => (window as any).__calls);
   expect(calls.some((c: any) => c.command === 'update_settings' && c.args.patch?.selectedProvider)).toBe(true);
 });
+
+test('authoritative mpv session events update player bar, reflect native pause and external exit', async ({ page }) => {
+  await desktopFixture(page);
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+
+  // Search and open title
+  const searchInput = page.getByLabel('Search your selected source');
+  await searchInput.fill('Bunny');
+  await searchInput.press('Enter');
+  await page.getByRole('button', { name: /Big Buck Bunny · Trailer/ }).click();
+  await page.getByRole('button', { name: 'Find a stream', exact: true }).click();
+  await page.getByRole('button', { name: /Official Blender download/ }).click();
+
+  // 1. Authoritative playback UI is visible with Pause button
+  await expect(page.getByLabel('Pause playback')).toBeVisible();
+  await expect(page.locator('.player-bar strong')).toHaveText('Big Buck Bunny · Trailer');
+
+  // 2. Simulate native mpv property change for pause = true
+  await page.evaluate(() => {
+    (window as any).__emitPlayerEvent?.({
+      type: 'state_changed',
+      state: {
+        sessionId: 'test-session',
+        active: true,
+        playing: false,
+        paused: true,
+        position: 12.0,
+        duration: 120.0,
+        volume: 100,
+        speed: 1,
+        itemName: 'Big Buck Bunny · Trailer',
+        episodeName: null,
+      },
+    });
+  });
+
+  // UI immediately reflects pause from native player without UI interaction
+  await expect(page.getByLabel('Resume playback')).toBeVisible();
+  await expect(page.getByText('Paused in mpv')).toBeVisible();
+
+  // 3. Click resume in UI -> cycles pause
+  await page.getByLabel('Resume playback').click();
+  await expect(page.getByLabel('Pause playback')).toBeVisible();
+
+  // 4. Simulate native mpv window closure / shutdown event
+  await page.evaluate(() => {
+    (window as any).__emitPlayerEvent?.({
+      type: 'shutdown',
+      sessionId: 'test-session',
+    });
+  });
+
+  // Player bar immediately unmounts
+  await expect(page.getByLabel('Pause playback')).not.toBeVisible();
+  await expect(page.getByLabel('Stop playback')).not.toBeVisible();
+});
