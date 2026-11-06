@@ -264,11 +264,11 @@ async fn removing_repository_preserves_library_and_watch_history() {
     assert!(app.store.repositories().unwrap().is_empty());
 
     // User's library and watch history remain INTACT!
-    let library = app.store.library().unwrap();
+    let library = app.store.library(None).unwrap();
     assert_eq!(library.len(), 1);
     assert_eq!(library[0].id, bookmarked.id);
 
-    let history = app.store.history().unwrap();
+    let history = app.store.history(None).unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].id, watch.id);
 }

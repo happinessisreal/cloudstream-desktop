@@ -805,6 +805,10 @@ impl Default for AppearanceSettings {
 pub struct GlobalSettings {
     #[serde(default)]
     pub appearance: AppearanceSettings,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_profile_id: Option<String>,
+    #[serde(default)]
+    pub auto_select_profile: bool,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -813,9 +817,46 @@ impl Default for GlobalSettings {
     fn default() -> Self {
         Self {
             appearance: AppearanceSettings::default(),
+            default_profile_id: None,
+            auto_select_profile: true,
             extra: BTreeMap::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    pub id: String,
+    pub name: String,
+    pub avatar: String,
+    #[serde(default)]
+    pub has_pin: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProfileInput {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProfileInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remove_pin: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

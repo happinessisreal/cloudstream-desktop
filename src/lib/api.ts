@@ -123,6 +123,8 @@ export const emptySnapshot: Snapshot = {
   installed: [],
   library: [],
   history: [],
+  profiles: [],
+  activeProfileId: 'default',
   status: {
     jvmAvailable: false,
     workerAvailable: false,

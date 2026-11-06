@@ -54,6 +54,9 @@
     Circle,
     Shuffle,
     Sparkles,
+    Lock,
+    Users,
+    UserPlus,
   } from 'lucide-svelte';
   import { call, nativeAvailable, emptySnapshot, getSettings, updateSettings, toErrorMessage, onPlayerEvent } from './lib/api';
   import MediaCard from './lib/MediaCard.svelte';
@@ -86,6 +89,9 @@
     WatchProgress,
     PlayerState,
     PlayerEvent,
+    Profile,
+    CreateProfileInput,
+    UpdateProfileInput,
   } from './lib/types';
 
   type Page = 'discover' | 'library' | 'extensions' | 'settings';
@@ -104,6 +110,17 @@
   let providers = $state<Provider[]>([]);
   let selectedProvider = $state('');
   let activeProfile = $state('default');
+  const currentProfile = $derived(
+    snapshot.profiles?.find((p) => p.id === activeProfile) ??
+      snapshot.profiles?.[0] ?? {
+        id: 'default',
+        name: 'Default Profile',
+        avatar: 'default',
+        hasPin: false,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+  );
   let home = $state<Home>({ rows: [] });
   let query = $state('');
   let searchItems = $state<MediaItem[]>([]);
@@ -147,8 +164,21 @@
     | 'test'
     | 'clearLibrary'
     | 'clearHistory'
+    | 'profiles'
+    | 'profileForm'
+    | 'profilePin'
+    | 'deleteProfile'
     | null
   >(null);
+  let pendingSwitchProfileId = $state<string | null>(null);
+  let pinInput = $state('');
+  let pinError = $state('');
+  let editingProfile = $state<Profile | null>(null);
+  let profileNameInput = $state('');
+  let profileAvatarInput = $state('default');
+  let profilePinInput = $state('');
+  let profileRemovePin = $state(false);
+  let deleteTargetProfileId = $state<string | null>(null);
   let repoUrl = $state('');
   let directUrl = $state('');
   let repoFilter = $state('');
@@ -399,12 +429,16 @@
       showError(e);
     }
   }
-  async function refresh() {
+  async function refresh(targetProfileId?: string) {
     if (!nativeAvailable()) {
       ready = true;
       return;
     }
-    snapshot = await call<Snapshot>('snapshot');
+    const pid = targetProfileId ?? activeProfile;
+    snapshot = await call<Snapshot>('snapshot', { profileId: pid });
+    if (snapshot.activeProfileId && !targetProfileId) {
+      activeProfile = snapshot.activeProfileId;
+    }
     const legacyDensity = localStorage.getItem('cloudstream.poster-density');
     if (legacyDensity === 'compact' || legacyDensity === 'comfortable') {
       posterDensity = legacyDensity;
@@ -434,6 +468,152 @@
     }
     await loadSearchHistory();
     ready = true;
+  }
+
+  function openProfileManager() {
+    error = '';
+    modal = 'profiles';
+  }
+
+  function startCreateProfile() {
+    editingProfile = null;
+    profileNameInput = '';
+    profileAvatarInput = 'popcorn';
+    profilePinInput = '';
+    profileRemovePin = false;
+    error = '';
+    modal = 'profileForm';
+  }
+
+  function startEditProfile(p: Profile) {
+    editingProfile = p;
+    profileNameInput = p.name;
+    profileAvatarInput = p.avatar;
+    profilePinInput = '';
+    profileRemovePin = false;
+    error = '';
+    modal = 'profileForm';
+  }
+
+  async function saveProfileForm() {
+    if (!profileNameInput.trim()) {
+      error = 'Profile name cannot be empty';
+      return;
+    }
+    try {
+      if (editingProfile) {
+        await call<Profile>('update_profile', {
+          id: editingProfile.id,
+          input: {
+            name: profileNameInput.trim(),
+            avatar: profileAvatarInput,
+            pin: profilePinInput.trim() || undefined,
+            removePin: profileRemovePin || undefined,
+          },
+        });
+        message('Profile updated');
+      } else {
+        await call<Profile>('create_profile', {
+          input: {
+            name: profileNameInput.trim(),
+            avatar: profileAvatarInput,
+            pin: profilePinInput.trim() || undefined,
+          },
+        });
+        message('Profile created');
+      }
+      await refresh();
+      modal = 'profiles';
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function requestSwitchProfile(targetId: string) {
+    const target = snapshot.profiles.find((p) => p.id === targetId);
+    if (!target) return;
+    if (target.id === activeProfile) {
+      modal = null;
+      return;
+    }
+    if (target.hasPin) {
+      pendingSwitchProfileId = target.id;
+      pinInput = '';
+      pinError = '';
+      modal = 'profilePin';
+    } else {
+      await performSwitch(target.id, null);
+    }
+  }
+
+  async function submitProfilePin() {
+    if (!pendingSwitchProfileId) return;
+    await performSwitch(pendingSwitchProfileId, pinInput.trim());
+  }
+
+  async function performSwitch(targetId: string, pin: string | null) {
+    try {
+      await call('switch_profile', { targetProfileId: targetId, pin: pin || undefined });
+      activeProfile = targetId;
+      pendingSwitchProfileId = null;
+      pinInput = '';
+      pinError = '';
+      modal = null;
+      await refresh(targetId);
+      if (selectedProvider) {
+        await chooseProvider(selectedProvider, true);
+      }
+      message(`Switched profile to ${snapshot.profiles.find((p) => p.id === targetId)?.name ?? targetId}`);
+    } catch (e) {
+      pinError = toErrorMessage(e);
+      showError(e);
+    }
+  }
+
+  function startDeleteProfile(id: string) {
+    if (snapshot.profiles.length <= 1) {
+      showError('Cannot delete the only remaining profile');
+      return;
+    }
+    deleteTargetProfileId = id;
+    modal = 'deleteProfile';
+  }
+
+  async function executeDeleteProfile() {
+    if (!deleteTargetProfileId) return;
+    const targetId = deleteTargetProfileId;
+    try {
+      await call('delete_profile', { id: targetId });
+      deleteTargetProfileId = null;
+      if (activeProfile === targetId) {
+        activeProfile = 'default';
+      }
+      message('Profile deleted');
+      await refresh();
+      modal = 'profiles';
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function updateAutoSelectProfile(enabled: boolean) {
+    try {
+      await updateSettings({ autoSelectProfile: enabled }, 'global');
+      await refresh();
+      message(`Auto-select profile ${enabled ? 'enabled' : 'disabled'}`);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function updateDefaultProfile(profileId: string) {
+    try {
+      await updateSettings({ defaultProfileId: profileId }, 'global');
+      await refresh();
+      message('Default profile updated');
+    } catch (e) {
+      showError(e);
+    }
   }
   async function task(label: string, operation: () => Promise<void>) {
     if (busy) return;
@@ -1470,6 +1650,13 @@
 
     void refresh()
       .then(() => {
+        const glob = snapshot.settings?.global;
+        if (glob?.autoSelectProfile === false && (snapshot.profiles?.length ?? 0) > 1) {
+          modal = 'profiles';
+        } else if (currentProfile?.hasPin) {
+          pendingSwitchProfileId = currentProfile.id;
+          modal = 'profilePin';
+        }
         if (selectedProvider) return chooseProvider(selectedProvider);
       })
       .catch((e) => {
@@ -1593,10 +1780,32 @@
       <button class:active={page === 'settings'} onclick={() => navigate('settings')}
         ><Settings size={20} /><span>Settings</span></button
       >
-      <div class="local-profile">
-        <span class="profile">L</span>
-        <div><strong>Local profile</strong><span>Saved on this device</span></div>
-      </div>
+      <button
+        type="button"
+        class="local-profile profile-action-btn"
+        data-testid="profile-switcher-btn"
+        onclick={openProfileManager}
+        title="Manage profiles"
+      >
+        <span class="profile avatar-badge">
+          {#if currentProfile?.avatar === 'popcorn'}🍿
+          {:else if currentProfile?.avatar === 'film'}🎬
+          {:else if currentProfile?.avatar === 'sparkles'}✨
+          {:else if currentProfile?.avatar === 'heart'}❤️
+          {:else if currentProfile?.avatar === 'lock'}🔒
+          {:else}{currentProfile?.name ? currentProfile.name.charAt(0).toUpperCase() : 'P'}
+          {/if}
+        </span>
+        <div class="profile-info-text">
+          <div class="profile-name-row">
+            <strong>{currentProfile?.name ?? 'Default Profile'}</strong>
+            {#if currentProfile?.hasPin}
+              <span class="pin-indicator" title="PIN protected">🔒</span>
+            {/if}
+          </div>
+          <span>Switch profile</span>
+        </div>
+      </button>
       <div class="build-label">CloudStream for Linux <span>0.1.0</span></div>
     </div>
   </aside>
@@ -2735,6 +2944,56 @@
         </section>
         <section class="settings-panel">
           <div class="section-title">
+            <h2>Profiles & Security</h2>
+            <button class="text-button" onclick={openProfileManager}>
+              <Users size={15} />Manage profiles
+            </button>
+          </div>
+          <div class="preference-row">
+            <div>
+              <strong>Auto-select profile on startup</strong>
+              <p>Automatically select the default profile when CloudStream starts.</p>
+            </div>
+            <div class="segmented-control" role="group" aria-label="Auto-select profile">
+              <button
+                type="button"
+                aria-label="Enable auto-select profile"
+                aria-pressed={snapshot.settings?.global?.autoSelectProfile ?? true}
+                class:chosen={snapshot.settings?.global?.autoSelectProfile ?? true}
+                onclick={() => updateAutoSelectProfile(true)}
+              >
+                Enabled
+              </button>
+              <button
+                type="button"
+                aria-label="Disable auto-select profile"
+                aria-pressed={!(snapshot.settings?.global?.autoSelectProfile ?? true)}
+                class:chosen={!(snapshot.settings?.global?.autoSelectProfile ?? true)}
+                onclick={() => updateAutoSelectProfile(false)}
+              >
+                Disabled
+              </button>
+            </div>
+          </div>
+          <div class="preference-row">
+            <div>
+              <strong>Default startup profile</strong>
+              <p>Profile used when auto-selecting on launch.</p>
+            </div>
+            <select
+              aria-label="Default startup profile"
+              class="filter-select"
+              value={snapshot.settings?.global?.defaultProfileId ?? 'default'}
+              onchange={(e) => updateDefaultProfile(e.currentTarget.value)}
+            >
+              {#each (snapshot.profiles || []) as prof}
+                <option value={prof.id}>{prof.name}</option>
+              {/each}
+            </select>
+          </div>
+        </section>
+        <section class="settings-panel">
+          <div class="section-title">
             <h2>Runtime health</h2>
             <button class="text-button" disabled={!!busy} onclick={() => task('health', refresh)}
               ><RefreshCw size={15} />Check again</button
@@ -2830,7 +3089,7 @@
 >
   <div class="dialog-heading">
     <span class="extension-icon"
-      >{#if modal === 'repository' || modal === 'rename'}<Globe size={25} />{:else if modal === 'localInstall' || modal === 'clone'}<Puzzle size={25} />{:else if modal === 'clearLibrary' || modal === 'clearHistory'}<Trash2 size={25} />{:else}<Link size={25} />{/if}</span
+      >{#if modal === 'repository' || modal === 'rename'}<Globe size={25} />{:else if modal === 'localInstall' || modal === 'clone'}<Puzzle size={25} />{:else if modal === 'clearLibrary' || modal === 'clearHistory' || modal === 'deleteProfile'}<Trash2 size={25} />{:else if modal === 'profiles' || modal === 'profileForm'}<Users size={25} />{:else if modal === 'profilePin'}<Lock size={25} />{:else}<Link size={25} />{/if}</span
     ><button class="icon-button" aria-label="Close dialog" onclick={() => (modal = null)}
       ><X size={20} /></button
     >
@@ -2850,7 +3109,15 @@
                 ? 'Clear library'
                 : modal === 'clearHistory'
                   ? 'Clear watch history'
-                  : 'Something ready to play?'}
+                  : modal === 'profiles'
+                    ? 'Manage profiles'
+                    : modal === 'profileForm'
+                      ? (editingProfile ? 'Edit profile' : 'Create profile')
+                      : modal === 'profilePin'
+                        ? 'Profile PIN required'
+                        : modal === 'deleteProfile'
+                          ? 'Delete profile'
+                          : 'Something ready to play?'}
   </h2>
   <p>
     {modal === 'repository'
@@ -2867,7 +3134,15 @@
                 ? 'Choose whether to clear titles in the current tab or your entire saved library.'
                 : modal === 'clearHistory'
                   ? 'Are you sure you want to clear your local watch history? This cannot be undone.'
-                  : 'Open a direct HTTP or HTTPS media URL in your native player.'}
+                  : modal === 'profiles'
+                    ? 'Switch between profiles or manage preferences on this device.'
+                    : modal === 'profileForm'
+                      ? 'Customize profile details, avatar, and optional PIN gate.'
+                      : modal === 'profilePin'
+                        ? 'Enter the PIN to unlock and access this profile.'
+                        : modal === 'deleteProfile'
+                          ? 'Confirm profile deletion.'
+                          : 'Open a direct HTTP or HTTPS media URL in your native player.'}
   </p>
   {#if error}<div class="dialog-error" role="alert">{error}</div>{/if}
   {#if modal === 'repository'}<form onsubmit={addRepository}>
@@ -3009,6 +3284,162 @@
         <button type="button" class="button secondary" onclick={() => (modal = null)}>Cancel</button>
         <button type="button" class="button danger" onclick={confirmClearHistory}>
           <Trash2 size={16} />Clear history
+        </button>
+      </div>
+    </div>
+  {:else if modal === 'profiles'}
+    <div class="profile-management-modal">
+      <div class="profile-cards-list">
+        {#each (snapshot.profiles || []) as p}
+          <div class="profile-list-item" class:active-profile-card={p.id === activeProfile}>
+            <div class="profile-item-left">
+              <span class="profile avatar-badge">
+                {#if p.avatar === 'popcorn'}🍿
+                {:else if p.avatar === 'film'}🎬
+                {:else if p.avatar === 'sparkles'}✨
+                {:else if p.avatar === 'heart'}❤️
+                {:else if p.avatar === 'lock'}🔒
+                {:else}{p.name ? p.name.charAt(0).toUpperCase() : 'P'}
+                {/if}
+              </span>
+              <div>
+                <div class="profile-name-row">
+                  <strong>{p.name}</strong>
+                  {#if p.hasPin}
+                    <span class="pin-indicator" title="PIN protected">🔒</span>
+                  {/if}
+                  {#if p.id === activeProfile}
+                    <span class="pill">Current</span>
+                  {/if}
+                </div>
+                <span class="field-help">{p.id === 'default' ? 'Default profile' : 'Local profile'}</span>
+              </div>
+            </div>
+            <div class="profile-item-actions">
+              {#if p.id !== activeProfile}
+                <button
+                  type="button"
+                  class="button secondary small"
+                  onclick={() => requestSwitchProfile(p.id)}
+                >
+                  Switch
+                </button>
+              {/if}
+              <button
+                type="button"
+                class="icon-button"
+                aria-label={`Edit profile ${p.name}`}
+                onclick={() => startEditProfile(p)}
+              >
+                <Edit2 size={16} />
+              </button>
+              {#if (snapshot.profiles?.length ?? 0) > 1}
+                <button
+                  type="button"
+                  class="icon-button"
+                  aria-label={`Delete profile ${p.name}`}
+                  onclick={() => startDeleteProfile(p.id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+      <div class="dialog-actions" style="margin-top: 16px;">
+        <button type="button" class="button secondary" onclick={() => (modal = null)}>Close</button>
+        <button type="button" class="button primary" onclick={startCreateProfile}>
+          <Plus size={16} />Add new profile
+        </button>
+      </div>
+    </div>
+  {:else if modal === 'profileForm'}
+    <form onsubmit={(e) => { e.preventDefault(); void saveProfileForm(); }}>
+      <label for="profile-name-input">Profile Name</label>
+      <input
+        id="profile-name-input"
+        bind:value={profileNameInput}
+        placeholder="e.g. Living Room, Kids, Anime"
+        required
+      />
+
+      <span class="field-label">Choose Avatar</span>
+      <div class="avatar-picker" role="radiogroup" aria-label="Avatar options">
+        {#each [
+          { id: 'default', label: 'Default', icon: '👤' },
+          { id: 'popcorn', label: 'Popcorn', icon: '🍿' },
+          { id: 'film', label: 'Film', icon: '🎬' },
+          { id: 'sparkles', label: 'Sparkles', icon: '✨' },
+          { id: 'heart', label: 'Heart', icon: '❤️' },
+          { id: 'lock', label: 'Lock', icon: '🔒' }
+        ] as av}
+          <button
+            type="button"
+            class="avatar-option"
+            class:selected={profileAvatarInput === av.id}
+            onclick={() => (profileAvatarInput = av.id)}
+            title={av.label}
+            aria-label={av.label}
+          >
+            {av.icon}
+          </button>
+        {/each}
+      </div>
+
+      <label for="profile-pin-input">PIN Gate (Optional 4-digit code)</label>
+      <input
+        id="profile-pin-input"
+        type="password"
+        maxlength="8"
+        bind:value={profilePinInput}
+        placeholder={editingProfile?.hasPin ? 'Leave blank to keep existing PIN' : 'Optional numeric PIN'}
+      />
+      {#if editingProfile?.hasPin}
+        <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; cursor: pointer;">
+          <input type="checkbox" bind:checked={profileRemovePin} />
+          <span>Remove PIN security</span>
+        </label>
+      {/if}
+
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={() => (modal = 'profiles')}>Back</button>
+        <button type="submit" class="button primary" disabled={!profileNameInput.trim()}>
+          {editingProfile ? 'Save changes' : 'Create profile'}
+        </button>
+      </div>
+    </form>
+  {:else if modal === 'profilePin'}
+    <form onsubmit={(e) => { e.preventDefault(); void submitProfilePin(); }}>
+      <label for="profile-pin-entry">Enter Profile PIN</label>
+      <input
+        id="profile-pin-entry"
+        type="password"
+        maxlength="8"
+        bind:value={pinInput}
+        placeholder="Enter 4-digit PIN"
+        required
+      />
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={() => (modal = 'profiles')}>Cancel</button>
+        <button type="submit" class="button primary" disabled={!pinInput.trim()}>
+          <Lock size={16} />Unlock profile
+        </button>
+      </div>
+    </form>
+  {:else if modal === 'deleteProfile'}
+    <div class="delete-confirmation-content">
+      <p style="color: var(--text-primary); margin-bottom: 16px;">
+        Are you sure you want to delete profile <strong>"{snapshot.profiles?.find((p) => p.id === deleteTargetProfileId)?.name ?? 'this profile'}"</strong>?
+      </p>
+      <div class="info-note" style="margin-bottom: 20px;">
+        <AlertCircle size={18} />
+        <p>This will permanently delete this profile's watch history, bookmarks, and preferences. Installed extensions and device packages will remain intact.</p>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="button secondary" onclick={() => (modal = 'profiles')}>Cancel</button>
+        <button type="button" class="button danger" onclick={executeDeleteProfile}>
+          <Trash2 size={16} />Delete profile
         </button>
       </div>
     </div>

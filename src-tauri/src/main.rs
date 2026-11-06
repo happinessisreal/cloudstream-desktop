@@ -10,17 +10,20 @@ fn error(error: impl std::fmt::Display) -> String {
 }
 
 #[tauri::command]
-async fn snapshot(app: State<'_, Backend>) -> Reply<Value> {
+async fn snapshot(app: State<'_, Backend>, profile_id: Option<String>) -> Reply<Value> {
+    let pid = profile_id.as_deref().unwrap_or("default");
     Ok(
         json!({
             "repositories": app.store.repositories().map_err(error)?,
             "installed": app.store.installed().map_err(error)?,
-            "library": app.store.library().map_err(error)?,
-            "history": app.store.history().map_err(error)?,
+            "library": app.store.library(Some(pid)).map_err(error)?,
+            "history": app.store.history(Some(pid)).map_err(error)?,
             "status": app.status().await,
             "extensionStates": app.extension_states().await.map_err(error)?,
             "settings": app.store.get_settings().map_err(error)?,
             "providers": app.providers().await.unwrap_or_default(),
+            "profiles": app.list_profiles().map_err(error)?,
+            "activeProfileId": pid,
         }),
     )
 }
@@ -272,43 +275,101 @@ async fn set_library_status(
     app: State<'_, Backend>,
     item: MediaItem,
     status: WatchStatus,
+    profile_id: Option<String>,
 ) -> Reply<LibraryItem> {
-    app.set_library_status(item, status).map_err(error)
+    app.set_library_status(item, status, profile_id.as_deref()).map_err(error)
 }
 #[tauri::command]
 async fn set_library_favorite(
     app: State<'_, Backend>,
     item: MediaItem,
     is_favorite: bool,
+    profile_id: Option<String>,
 ) -> Reply<LibraryItem> {
-    app.set_library_favorite(item, is_favorite).map_err(error)
+    app.set_library_favorite(item, is_favorite, profile_id.as_deref()).map_err(error)
 }
 #[tauri::command]
 async fn set_library_subscribed(
     app: State<'_, Backend>,
     item: MediaItem,
     is_subscribed: bool,
+    profile_id: Option<String>,
 ) -> Reply<LibraryItem> {
-    app.set_library_subscribed(item, is_subscribed).map_err(error)
+    app.set_library_subscribed(item, is_subscribed, profile_id.as_deref()).map_err(error)
 }
 #[tauri::command]
-async fn remove_library_item(app: State<'_, Backend>, id: String) -> Reply<()> {
-    app.remove_library_item(&id).map_err(error)
+async fn remove_library_item(
+    app: State<'_, Backend>,
+    id: String,
+    profile_id: Option<String>,
+) -> Reply<()> {
+    app.remove_library_item(&id, profile_id.as_deref()).map_err(error)
 }
 #[tauri::command]
 async fn clear_library(
     app: State<'_, Backend>,
     status: Option<WatchStatus>,
+    profile_id: Option<String>,
 ) -> Reply<()> {
-    app.clear_library(status).map_err(error)
+    app.clear_library(status, profile_id.as_deref()).map_err(error)
 }
 #[tauri::command]
-async fn remove_history_item(app: State<'_, Backend>, id: String) -> Reply<()> {
-    app.remove_history_item(&id).map_err(error)
+async fn remove_history_item(
+    app: State<'_, Backend>,
+    id: String,
+    profile_id: Option<String>,
+) -> Reply<()> {
+    app.remove_history_item(&id, profile_id.as_deref()).map_err(error)
 }
 #[tauri::command]
-async fn clear_history(app: State<'_, Backend>) -> Reply<()> {
-    app.clear_history().map_err(error)
+async fn clear_history(
+    app: State<'_, Backend>,
+    profile_id: Option<String>,
+) -> Reply<()> {
+    app.clear_history(profile_id.as_deref()).map_err(error)
+}
+
+#[tauri::command]
+async fn list_profiles(app: State<'_, Backend>) -> Reply<Vec<Profile>> {
+    app.list_profiles().map_err(error)
+}
+
+#[tauri::command]
+async fn get_profile(app: State<'_, Backend>, id: String) -> Reply<Option<Profile>> {
+    app.get_profile(&id).map_err(error)
+}
+
+#[tauri::command]
+async fn create_profile(app: State<'_, Backend>, input: CreateProfileInput) -> Reply<Profile> {
+    app.create_profile(input).map_err(error)
+}
+
+#[tauri::command]
+async fn update_profile(
+    app: State<'_, Backend>,
+    id: String,
+    input: UpdateProfileInput,
+) -> Reply<Profile> {
+    app.update_profile(&id, input).map_err(error)
+}
+
+#[tauri::command]
+async fn delete_profile(app: State<'_, Backend>, id: String) -> Reply<()> {
+    app.delete_profile(&id).map_err(error)
+}
+
+#[tauri::command]
+async fn verify_profile_pin(app: State<'_, Backend>, id: String, pin: String) -> Reply<bool> {
+    app.verify_profile_pin(&id, &pin).map_err(error)
+}
+
+#[tauri::command]
+async fn switch_profile(
+    app: State<'_, Backend>,
+    target_profile_id: String,
+    pin: Option<String>,
+) -> Reply<()> {
+    app.switch_profile(&target_profile_id, pin.as_deref()).await.map_err(error)
 }
 #[tauri::command]
 async fn get_media_watch_progress(
@@ -443,6 +504,13 @@ fn main() {
             clear_library,
             remove_history_item,
             clear_history,
+            list_profiles,
+            get_profile,
+            create_profile,
+            update_profile,
+            delete_profile,
+            verify_profile_pin,
+            switch_profile,
             get_media_watch_progress,
             mark_episode_watched,
             mark_episodes_up_to,

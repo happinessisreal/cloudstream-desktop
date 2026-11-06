@@ -46,7 +46,7 @@ fn version_1_database_fixture_survives_upgrade_and_reopen() {
         assert_eq!(plugins[0].runtime, RuntimeKind::Jvm);
 
         // Verify v1 bookmark record (migrated to stable media_id, with alias)
-        let library = store.library().unwrap();
+        let library = store.library(None).unwrap();
         assert_eq!(library.len(), 1);
         let expected_media_id = compute_media_id("p1", "https://example.com/item", None);
         assert_eq!(library[0].id, expected_media_id);
@@ -57,7 +57,7 @@ fn version_1_database_fixture_survives_upgrade_and_reopen() {
         );
 
         // Verify v1 history record (migrated to stable episode_id, with alias and watch progress)
-        let history = store.history().unwrap();
+        let history = store.history(None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].episode.name, "Episode 1");
         assert_eq!(history[0].position, 120.0);
@@ -88,8 +88,8 @@ fn version_1_database_fixture_survives_upgrade_and_reopen() {
         assert_eq!(store.schema_version().unwrap(), CURRENT_SCHEMA_VERSION);
         assert_eq!(store.repositories().unwrap().len(), 1);
         assert_eq!(store.installed().unwrap().len(), 1);
-        assert_eq!(store.library().unwrap().len(), 1);
-        assert_eq!(store.history().unwrap().len(), 1);
+        assert_eq!(store.library(None).unwrap().len(), 1);
+        assert_eq!(store.history(None).unwrap().len(), 1);
     }
 }
 

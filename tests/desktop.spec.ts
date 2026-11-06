@@ -72,6 +72,20 @@ async function desktopFixture(page: Page, unsupported = false) {
         : [],
       library: [],
       history: [],
+      profiles: [
+        {
+          id: 'default',
+          name: 'Default Profile',
+          avatar: 'default',
+          hasPin: false,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ],
+      activeProfileId: 'default',
+      profileStores: {
+        default: { library: [], history: [] },
+      },
       settings: {
         schemaVersion: 1,
         revision: 1,
@@ -96,6 +110,12 @@ async function desktopFixture(page: Page, unsupported = false) {
       switch (command) {
         case 'snapshot': {
           const snap = structuredClone(state);
+          const pid = (args && (args as any).profileId) || state.activeProfileId || 'default';
+          snap.activeProfileId = pid;
+          (state as any).profileStores = (state as any).profileStores || {};
+          (state as any).profileStores[pid] = (state as any).profileStores[pid] || { library: [], history: [] };
+          snap.library = (state as any).profileStores[pid].library;
+          snap.history = (state as any).profileStores[pid].history;
           const extra = (window as any).__extraProviders || [];
           snap.providers = state.installed.length && !unsupported ? [provider, ...extra] : extra;
           return snap;
@@ -233,51 +253,149 @@ async function desktopFixture(page: Page, unsupported = false) {
             subtitles: [],
           };
         case 'bookmark': {
-          const entry = { id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: false, isSubscribed: false };
-          state.library.push(entry);
+          const pid = (args as any)?.profileId || state.activeProfileId || 'default';
+          (state as any).profileStores = (state as any).profileStores || {};
+          (state as any).profileStores[pid] = (state as any).profileStores[pid] || { library: [], history: [] };
+          const entry = { id: 'saved_' + ((state as any).profileStores[pid].library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: false, isSubscribed: false, profileId: pid };
+          (state as any).profileStores[pid].library.push(entry);
+          state.library = (state as any).profileStores[pid].library;
           return entry;
         }
-        case 'remove_bookmark':
-          state.library = [];
-          return null;
-        case 'set_library_status': {
-          const entry = state.library.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
-          if (entry) {
-            entry.watchStatus = args.status;
-          } else {
-            state.library.push({ id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: args.status, isFavorite: false, isSubscribed: false });
-          }
-          return null;
-        }
-        case 'set_library_favorite': {
-          const entry = state.library.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
-          if (entry) {
-            entry.isFavorite = args.isFavorite;
-          } else {
-            state.library.push({ id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: args.isFavorite, isSubscribed: false });
-          }
-          return null;
-        }
-        case 'set_library_subscribed': {
-          const entry = state.library.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
-          if (entry) {
-            entry.isSubscribed = args.isSubscribed;
-          } else {
-            state.library.push({ id: 'saved_' + (state.library.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: false, isSubscribed: args.isSubscribed });
-          }
-          return null;
-        }
-        case 'remove_library_item': {
-          state.library = state.library.filter((l: any) => l.id !== args.id);
-          return null;
-        }
-        case 'clear_library': {
-          if (args.status) {
-            state.library = state.library.filter((l: any) => l.watchStatus !== args.status);
-          } else {
+        case 'remove_bookmark': {
+          const pid = (args as any)?.profileId || state.activeProfileId || 'default';
+          if ((state as any).profileStores?.[pid]) {
+            (state as any).profileStores[pid].library = [];
             state.library = [];
           }
           return null;
+        }
+        case 'set_library_status': {
+          const pid = (args as any)?.profileId || state.activeProfileId || 'default';
+          (state as any).profileStores = (state as any).profileStores || {};
+          (state as any).profileStores[pid] = (state as any).profileStores[pid] || { library: [], history: [] };
+          const lib = (state as any).profileStores[pid].library;
+          const entry = lib.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
+          if (entry) {
+            entry.watchStatus = args.status;
+          } else {
+            lib.push({ id: 'saved_' + (lib.length + 1), item: args.item, savedAt: Date.now(), watchStatus: args.status, isFavorite: false, isSubscribed: false, profileId: pid });
+          }
+          state.library = lib;
+          return null;
+        }
+        case 'set_library_favorite': {
+          const pid = (args as any)?.profileId || state.activeProfileId || 'default';
+          (state as any).profileStores = (state as any).profileStores || {};
+          (state as any).profileStores[pid] = (state as any).profileStores[pid] || { library: [], history: [] };
+          const lib = (state as any).profileStores[pid].library;
+          const entry = lib.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
+          if (entry) {
+            entry.isFavorite = args.isFavorite;
+          } else {
+            lib.push({ id: 'saved_' + (lib.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: args.isFavorite, isSubscribed: false, profileId: pid });
+          }
+          state.library = lib;
+          return null;
+        }
+        case 'set_library_subscribed': {
+          const pid = (args as any)?.profileId || state.activeProfileId || 'default';
+          (state as any).profileStores = (state as any).profileStores || {};
+          (state as any).profileStores[pid] = (state as any).profileStores[pid] || { library: [], history: [] };
+          const lib = (state as any).profileStores[pid].library;
+          const entry = lib.find((l: any) => l.item?.url === args.item?.url || l.id === 'saved');
+          if (entry) {
+            entry.isSubscribed = args.isSubscribed;
+          } else {
+            lib.push({ id: 'saved_' + (lib.length + 1), item: args.item, savedAt: Date.now(), watchStatus: 'none', isFavorite: false, isSubscribed: args.isSubscribed, profileId: pid });
+          }
+          state.library = lib;
+          return null;
+        }
+        case 'remove_library_item': {
+          const pid = (args as any)?.profileId || state.activeProfileId || 'default';
+          if ((state as any).profileStores?.[pid]) {
+            (state as any).profileStores[pid].library = (state as any).profileStores[pid].library.filter((l: any) => l.id !== args.id);
+            state.library = (state as any).profileStores[pid].library;
+          }
+          return null;
+        }
+        case 'clear_library': {
+          const pid = (args as any)?.profileId || state.activeProfileId || 'default';
+          if ((state as any).profileStores?.[pid]) {
+            if (args.status) {
+              (state as any).profileStores[pid].library = (state as any).profileStores[pid].library.filter((l: any) => l.watchStatus !== args.status);
+            } else {
+              (state as any).profileStores[pid].library = [];
+            }
+            state.library = (state as any).profileStores[pid].library;
+          }
+          return null;
+        }
+        case 'list_profiles':
+          return state.profiles;
+        case 'get_profile':
+          return state.profiles.find((p: any) => p.id === args.id) || null;
+        case 'create_profile': {
+          const input = (args as any).input;
+          const id = 'prof_' + (state.profiles.length + 1);
+          const p = {
+            id,
+            name: input.name,
+            avatar: input.avatar || 'default',
+            hasPin: Boolean(input.pin),
+            _pin: input.pin || null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          state.profiles.push(p);
+          (state as any).profileStores = (state as any).profileStores || {};
+          (state as any).profileStores[id] = { library: [], history: [] };
+          return p;
+        }
+        case 'update_profile': {
+          const id = (args as any).id;
+          const input = (args as any).input;
+          const p = state.profiles.find((x: any) => x.id === id);
+          if (!p) throw new Error('Profile not found');
+          if (input.name) p.name = input.name;
+          if (input.avatar) p.avatar = input.avatar;
+          if (input.removePin) {
+            p.hasPin = false;
+            p._pin = null;
+          } else if (input.pin) {
+            p.hasPin = true;
+            p._pin = input.pin;
+          }
+          p.updatedAt = Date.now();
+          return p;
+        }
+        case 'delete_profile': {
+          const id = (args as any).id;
+          if (state.profiles.length <= 1) throw new Error('Cannot delete only profile');
+          state.profiles = state.profiles.filter((x: any) => x.id !== id);
+          if ((state as any).profileStores?.[id]) {
+            delete (state as any).profileStores[id];
+          }
+          if (state.activeProfileId === id) {
+            state.activeProfileId = 'default';
+          }
+          return null;
+        }
+        case 'verify_profile_pin': {
+          const p = state.profiles.find((x: any) => x.id === args.id);
+          if (!p) throw new Error('Profile not found');
+          if (!p.hasPin) return true;
+          return p._pin === args.pin;
+        }
+        case 'switch_profile': {
+          const targetId = (args as any).targetProfileId;
+          const p = state.profiles.find((x: any) => x.id === targetId);
+          if (!p) throw new Error('Profile not found');
+          if (p.hasPin && p._pin && p._pin !== (args as any).pin) {
+            throw new Error('Incorrect PIN');
+          }
+          state.activeProfileId = targetId;
+          return p;
         }
         case 'remove_history_item': {
           state.history = state.history.filter((h: any) => h.id !== args.id);
@@ -433,6 +551,12 @@ async function desktopFixture(page: Page, unsupported = false) {
           }
           if (patch.appearance?.searchSuggestions !== undefined) {
             state.settings.global.appearance.searchSuggestions = patch.appearance.searchSuggestions;
+          }
+          if (patch.autoSelectProfile !== undefined) {
+            state.settings.global.autoSelectProfile = patch.autoSelectProfile;
+          }
+          if (patch.defaultProfileId !== undefined) {
+            state.settings.global.defaultProfileId = patch.defaultProfileId;
           }
           if (patch.selectedProvider !== undefined) {
             state.settings.profiles = state.settings.profiles || {};
@@ -1020,4 +1144,105 @@ test('authoritative mpv session events update player bar, reflect native pause a
   // Player bar immediately unmounts
   await expect(page.getByLabel('Pause playback')).not.toBeVisible();
   await expect(page.getByLabel('Stop playback')).not.toBeVisible();
+});
+
+test('local profiles: create, pin lock, switch, library isolation, and confirmed delete', async ({ page }) => {
+  await desktopFixture(page);
+
+  // 1. Check sidebar shows default profile
+  const profileBtn = page.getByTestId('profile-switcher-btn');
+  await expect(profileBtn).toBeVisible();
+  await expect(profileBtn).toContainText('Default Profile');
+
+  // Bookmark an item under Default Profile
+  await page.getByRole('button', { name: 'Try an open movie' }).click();
+  const search = page.getByLabel('Search your selected source');
+  await search.fill('Bunny');
+  await search.press('Enter');
+  await page.getByRole('button', { name: /Big Buck Bunny · Trailer/ }).click();
+  await page.getByRole('button', { name: 'Save to library', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Saved to library', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'My library' }).click();
+  await expect(page.locator('.media-card strong', { hasText: 'Big Buck Bunny' })).toBeVisible();
+
+  // 2. Open Profile Manager
+  await profileBtn.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Manage profiles' })).toBeVisible();
+
+  // 3. Create a new PIN-protected profile: "Kids"
+  await page.getByRole('button', { name: 'Add new profile' }).click();
+  await expect(dialog.getByRole('heading', { name: 'Create profile' })).toBeVisible();
+  await page.getByLabel('Profile Name').fill('Kids');
+  // Choose popcorn avatar
+  await page.getByRole('button', { name: 'Popcorn' }).click();
+  // Enter PIN
+  await page.getByLabel('PIN Gate').fill('1234');
+  await page.getByRole('button', { name: 'Create profile' }).click();
+
+  // Should return to profiles list with Kids profile and a lock indicator
+  await expect(dialog.getByText('Kids')).toBeVisible();
+  await expect(dialog.getByTitle('PIN protected')).toBeVisible();
+
+  // 4. Switch to Kids profile (requires PIN)
+  const kidsRow = dialog.locator('.profile-list-item', { hasText: 'Kids' });
+  await kidsRow.getByRole('button', { name: 'Switch' }).click();
+
+  // PIN prompt should appear
+  await expect(dialog.getByRole('heading', { name: 'Profile PIN required' })).toBeVisible();
+
+  // Entering wrong PIN fails
+  await page.getByLabel('Enter Profile PIN').fill('9999');
+  await page.getByRole('button', { name: 'Unlock profile' }).click();
+  await expect(dialog.getByText('Incorrect PIN')).toBeVisible();
+
+  // Entering correct PIN succeeds
+  await page.getByLabel('Enter Profile PIN').fill('1234');
+  await page.getByRole('button', { name: 'Unlock profile' }).click();
+
+  // Dialog closes, sidebar now displays Kids profile
+  await expect(dialog).not.toBeVisible();
+  await expect(profileBtn).toContainText('Kids');
+
+  // 5. Verify Library Isolation: Kids library is empty!
+  await page.getByRole('button', { name: 'My library' }).click();
+  await expect(page.getByRole('heading', { name: 'A home for your next watch.' })).toBeVisible();
+  await expect(page.locator('.media-card strong', { hasText: 'Big Buck Bunny' })).not.toBeVisible();
+
+  // 6. Switch back to Default Profile
+  await profileBtn.click();
+  await expect(dialog).toBeVisible();
+  const defaultRow = dialog.locator('.profile-list-item', { hasText: 'Default Profile' });
+  await defaultRow.getByRole('button', { name: 'Switch' }).click();
+  await expect(profileBtn).toContainText('Default Profile');
+
+  // Default library still has Big Buck Bunny!
+  await page.getByRole('button', { name: 'My library' }).click();
+  await expect(page.locator('.media-card strong', { hasText: 'Big Buck Bunny' })).toBeVisible();
+
+  // 7. Delete Kids profile with confirmed deletion
+  await profileBtn.click();
+  await expect(dialog).toBeVisible();
+  const kidsDeleteBtn = dialog.locator('.profile-list-item', { hasText: 'Kids' }).getByLabel('Delete profile Kids');
+  await kidsDeleteBtn.click();
+  await expect(dialog.getByRole('heading', { name: 'Delete profile' })).toBeVisible();
+
+  // Cancel deletion keeps Kids intact
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog.getByText('Kids')).toBeVisible();
+
+  // Confirm delete
+  await kidsDeleteBtn.click();
+  await dialog.getByRole('button', { name: 'Delete profile' }).click();
+
+  // Kids is gone from list, only Default remains
+  await expect(dialog.getByText('Kids')).not.toBeVisible();
+  await expect(dialog.getByText('Default Profile', { exact: true })).toBeVisible();
+
+  // Installed extensions remain intact
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await page.getByRole('button', { name: /Installed/ }).click();
+  await expect(page.getByRole('heading', { name: 'Blender Open Movies' })).toBeVisible();
 });

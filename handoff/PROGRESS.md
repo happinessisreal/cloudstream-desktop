@@ -204,8 +204,31 @@ Audit Baseline: 2026-11-01 (Upstream reference commit: 5024ace2922a148d38df2a816
   - Playwright UI tests: `npm run test:ui` (21 passed, including new test for authoritative mpv session events updating player bar, reflecting native pause and external exit).
   - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
 
+### [T11] Local profiles, startup selection and access locks
+- **Status:** Completed
+- **Priority:** P1
+- **Completed Substeps:**
+  1. Implemented transactional Migration 5 in SQLite (`crates/core/src/store.rs`): created `profiles` table, seeded default profile `'default'`, and migrated existing unscoped `library` and `history` records with `default::` prefix, while keeping packages and repositories device-wide.
+  2. Implemented profile models (`Profile`, `CreateProfileInput`, `UpdateProfileInput`), keyring infrastructure (`crates/core/src/keyring.rs` with `KeyringProvider`, `MockKeyring`, and `FallbackKeyring`), and salted SHA-256 PIN hashing with `sha2::Sha256`.
+  3. Profile CRUD in Rust core (`crates/core/src/store.rs`, `crates/core/src/lib.rs`): `list_profiles`, `get_profile`, `create_profile`, `update_profile`, `delete_profile`, and `verify_profile_pin`. Deleting a profile leaves device packages and other profiles completely intact and prevents deleting the last remaining profile.
+  4. Profile switch lifecycle (`switch_profile`): verifies PIN if protected, flushes player progress under the original profile, and clears the home cache before switching. Player events in flight are tagged with the session's launching profile, ensuring late events arriving during a switch never pollute the new profile.
+  5. Added native Tauri commands and exposed `profiles` and `activeProfileId` in `snapshot`.
+  6. Built rich UI in `src/App.svelte` and `src/style.css`:
+     - Sidebar profile switcher button showing current profile avatar, name, and PIN lock status.
+     - Profile management modal: lists profiles with current indicator, PIN lock badge, switch button, edit button, and delete button (with confirmation modal).
+     - Create and edit profile form: name input, avatar picker (default, popcorn, film, sparkles, heart, lock), optional 4-digit PIN, and PIN removal option.
+     - PIN prompt dialog when attempting to switch to a locked profile.
+     - Settings page "Profiles & Security" panel: auto-select profile on startup toggle and default profile dropdown.
+- **Validation:**
+  - Rust tests: `cargo test --test profile_isolation` (5 passed: keyring mock/fallback behavior, migration creates default profile and migrates legacy records, profile CRUD and PIN protection, two profiles library/history isolation, and late player events during switch saved to original profile).
+  - All core tests: `cargo test -p cloudstream-core` (60 passed, 1 ignored).
+  - Tauri build: `cargo check -p cloudstream-desktop` (0 errors, 0 warnings).
+  - Svelte check: `npm run check` (0 errors, 0 warnings).
+  - Production frontend build: `npm run build` (0 errors, 0 warnings).
+  - Playwright UI tests: `npm run test:ui` (22 passed, including new test `local profiles: create, pin lock, switch, library isolation, and confirmed delete`).
+  - Worker smoke: `bash scripts/smoke-worker.sh` (passed).
+
 ## Next Ready Tasks
-- **[T11]** Local profiles, startup selection and access locks (Depends on: T01, T02, T10)
 - **[T12]** Rich details and episode browser (Depends on: T03, T10)
 - **[T15]** Episode queues, resume and automatic next (Depends on: T02, T10, T14)
 - **[T19]** Session-aware media transport and WebView integration boundary (Depends on: T03, T14)

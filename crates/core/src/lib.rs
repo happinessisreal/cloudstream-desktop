@@ -1,3 +1,4 @@
+pub mod keyring;
 pub mod models;
 pub mod player;
 pub mod repository;
@@ -847,7 +848,7 @@ impl App {
         let legacy_id = plugin_id(&item.provider_id, &item.url);
         let now_ms = timestamp_ms();
 
-        let mut entry = self.store.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
+        let mut entry = self.store.get_library_item(&media_id, None)?.unwrap_or_else(|| LibraryItem {
             id: media_id.clone(),
             item: item.clone(),
             saved_at: now_ms,
@@ -860,37 +861,77 @@ impl App {
         });
         entry.item = item;
         entry.updated_at = Some(now_ms);
-        self.store.put("library", &entry.id, &entry)?;
+        self.store.put("library", &format!("default::{}", entry.id), &entry)?;
         self.store.put_alias(&legacy_id, "media", &media_id)?;
         Ok(entry)
     }
 
-    pub fn set_library_status(&self, item: MediaItem, status: WatchStatus) -> Result<LibraryItem> {
-        self.store.set_library_status(item, status, None)
+    pub fn set_library_status(&self, item: MediaItem, status: WatchStatus, profile_id: Option<&str>) -> Result<LibraryItem> {
+        self.store.set_library_status(item, status, profile_id)
     }
 
-    pub fn set_library_favorite(&self, item: MediaItem, is_favorite: bool) -> Result<LibraryItem> {
-        self.store.set_library_favorite(item, is_favorite, None)
+    pub fn set_library_favorite(&self, item: MediaItem, is_favorite: bool, profile_id: Option<&str>) -> Result<LibraryItem> {
+        self.store.set_library_favorite(item, is_favorite, profile_id)
     }
 
-    pub fn set_library_subscribed(&self, item: MediaItem, is_subscribed: bool) -> Result<LibraryItem> {
-        self.store.set_library_subscribed(item, is_subscribed, None)
+    pub fn set_library_subscribed(&self, item: MediaItem, is_subscribed: bool, profile_id: Option<&str>) -> Result<LibraryItem> {
+        self.store.set_library_subscribed(item, is_subscribed, profile_id)
     }
 
-    pub fn remove_library_item(&self, id: &str) -> Result<()> {
-        self.store.remove_library_item(id)
+    pub fn remove_library_item(&self, id: &str, profile_id: Option<&str>) -> Result<()> {
+        self.store.remove_library_item(id, profile_id)
     }
 
-    pub fn clear_library(&self, status: Option<WatchStatus>) -> Result<()> {
-        self.store.clear_library(status)
+    pub fn clear_library(&self, status: Option<WatchStatus>, profile_id: Option<&str>) -> Result<()> {
+        self.store.clear_library(status, profile_id)
     }
 
-    pub fn remove_history_item(&self, id: &str) -> Result<()> {
-        self.store.remove_history_item(id)
+    pub fn remove_history_item(&self, id: &str, profile_id: Option<&str>) -> Result<()> {
+        self.store.remove_history_item(id, profile_id)
     }
 
-    pub fn clear_history(&self) -> Result<()> {
-        self.store.clear_history()
+    pub fn clear_history(&self, profile_id: Option<&str>) -> Result<()> {
+        self.store.clear_history(profile_id)
+    }
+
+    pub fn list_profiles(&self) -> Result<Vec<Profile>> {
+        self.store.list_profiles()
+    }
+
+    pub fn get_profile(&self, id: &str) -> Result<Option<Profile>> {
+        self.store.get_profile(id)
+    }
+
+    pub fn create_profile(&self, input: CreateProfileInput) -> Result<Profile> {
+        self.store.create_profile(input)
+    }
+
+    pub fn update_profile(&self, id: &str, input: UpdateProfileInput) -> Result<Profile> {
+        self.store.update_profile(id, input)
+    }
+
+    pub fn delete_profile(&self, id: &str) -> Result<()> {
+        self.store.delete_profile(id)
+    }
+
+    pub fn verify_profile_pin(&self, id: &str, pin: &str) -> Result<bool> {
+        self.store.verify_profile_pin(id, pin)
+    }
+
+    pub async fn switch_profile(&self, id: &str, pin: Option<&str>) -> Result<()> {
+        let profile = self.store.get_profile(id)?.context("Profile not found")?;
+        if profile.has_pin {
+            let Some(p) = pin else {
+                bail!("PIN required to unlock this profile");
+            };
+            if !self.store.verify_profile_pin(id, p)? {
+                bail!("Incorrect PIN");
+            }
+        }
+
+        let _ = self.flush_player_progress().await;
+        self.home_cache.lock().unwrap().clear();
+        Ok(())
     }
 
     pub fn get_media_watch_progress(&self, media_id: &str, profile_id: Option<&str>) -> Result<Vec<WatchProgress>> {

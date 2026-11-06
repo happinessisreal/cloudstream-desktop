@@ -102,7 +102,7 @@ fn status_favorite_and_subscription_coexist_independently() {
     assert!(res4.is_subscribed);
 
     // 5. Verify retrieval from DB
-    let retrieved = store.get_library_item(&media_id).unwrap().unwrap();
+    let retrieved = store.get_library_item(&media_id, None).unwrap().unwrap();
     assert_eq!(retrieved.watch_status, WatchStatus::Completed);
     assert!(retrieved.is_favorite);
     assert!(retrieved.is_subscribed);
@@ -143,11 +143,11 @@ fn legacy_bookmarks_preserve_accessible_with_default_none_status() {
         .unwrap();
     }
 
-    // Now open with Store (which triggers migration 4)
+    // Now open with Store (which triggers migrations)
     let store = Store::open(&db_path).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 4);
+    assert_eq!(store.schema_version().unwrap(), cloudstream_core::store::CURRENT_SCHEMA_VERSION);
 
-    let items = store.library().unwrap();
+    let items = store.library(None).unwrap();
     assert_eq!(items.len(), 1);
     let item = &items[0];
     assert_eq!(item.id, "prov1::hash123");
@@ -330,26 +330,26 @@ fn single_item_removal_and_confirmed_bulk_clear() {
         .set_library_status(item3.clone(), WatchStatus::Watching, None)
         .unwrap();
 
-    assert_eq!(store.library().unwrap().len(), 3);
+    assert_eq!(store.library(None).unwrap().len(), 3);
 
     // Remove single item (l2)
-    store.remove_library_item(&l2.id).unwrap();
-    assert_eq!(store.library().unwrap().len(), 2);
-    assert!(store.get_library_item(&l2.id).unwrap().is_none());
+    store.remove_library_item(&l2.id, None).unwrap();
+    assert_eq!(store.library(None).unwrap().len(), 2);
+    assert!(store.get_library_item(&l2.id, None).unwrap().is_none());
 
     // Clear specific status (Watching)
     // l1 is also favorited
     store.set_library_favorite(item1.clone(), true, None).unwrap();
-    store.clear_library(Some(WatchStatus::Watching)).unwrap();
+    store.clear_library(Some(WatchStatus::Watching), None).unwrap();
 
     // l3 had only Watching status and no fav/sub, so it was deleted
-    assert!(store.get_library_item(&l3.id).unwrap().is_none());
+    assert!(store.get_library_item(&l3.id, None).unwrap().is_none());
     // l1 was favorited, so its status reverted to None while remaining in library
-    let l1_after = store.get_library_item(&l1.id).unwrap().unwrap();
+    let l1_after = store.get_library_item(&l1.id, None).unwrap().unwrap();
     assert_eq!(l1_after.watch_status, WatchStatus::None);
     assert!(l1_after.is_favorite);
 
     // Full clear
-    store.clear_library(None).unwrap();
-    assert_eq!(store.library().unwrap().len(), 0);
+    store.clear_library(None, None).unwrap();
+    assert_eq!(store.library(None).unwrap().len(), 0);
 }

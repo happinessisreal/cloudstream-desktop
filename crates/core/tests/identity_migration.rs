@@ -396,7 +396,7 @@ fn missing_provider_does_not_delete_progress() {
     store.save_watch_entry(&watch, "default").unwrap();
 
     // Verify history lists the entry even though provider is not installed
-    let history = store.history().unwrap();
+    let history = store.history(None).unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].id, ep_id);
     assert_eq!(history[0].item.provider_id, "uninstalled:provider");

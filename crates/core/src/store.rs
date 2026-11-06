@@ -2,9 +2,10 @@ use crate::models::*;
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{de::DeserializeOwned, Serialize};
+use sha2::{Digest, Sha256};
 use std::{path::Path, sync::Mutex};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 pub struct Migration {
     pub version: u32,
@@ -249,6 +250,32 @@ fn migration_4(tx: &Transaction) -> Result<()> {
     Ok(())
 }
 
+fn migration_5(tx: &Transaction) -> Result<()> {
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            avatar TEXT NOT NULL,
+            pin_salt TEXT,
+            pin_hash TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        INSERT OR IGNORE INTO profiles (id, name, avatar, created_at, updated_at)
+        VALUES ('default', 'Default Profile', 'default', 0, 0);
+        UPDATE records SET id = 'default::' || id WHERE kind = 'library' AND id NOT LIKE 'default::%';
+        UPDATE records SET id = 'default::' || id WHERE kind = 'history' AND id NOT LIKE 'default::%';
+        UPDATE watch_progress SET profile_id = 'default' WHERE profile_id IS NULL OR profile_id = '';",
+    )?;
+    Ok(())
+}
+
+pub fn hash_pin(pin: &str, salt: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(format!("{salt}:{pin}").as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
 pub fn standard_migrations() -> Vec<Migration> {
     vec![
         Migration {
@@ -270,6 +297,11 @@ pub fn standard_migrations() -> Vec<Migration> {
             version: 4,
             description: "Add watched_override column to watch_progress",
             run: migration_4,
+        },
+        Migration {
+            version: 5,
+            description: "Profiles table, default profile and profile-scoped records",
+            run: migration_5,
         },
     ]
 }
@@ -404,16 +436,285 @@ impl Store {
         self.list("plugin")
     }
 
-    pub fn library(&self) -> Result<Vec<LibraryItem>> {
-        self.list("library")
+    pub fn list_profiles(&self) -> Result<Vec<Profile>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT id, name, avatar, pin_hash, created_at, updated_at FROM profiles ORDER BY created_at ASC, id ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let pin_hash: Option<String> = row.get(3)?;
+            Ok(Profile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                avatar: row.get(2)?,
+                has_pin: pin_hash.is_some(),
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?;
+        let mut profiles = Vec::new();
+        for r in rows {
+            profiles.push(r?);
+        }
+        Ok(profiles)
     }
 
-    pub fn get_library_item(&self, id: &str) -> Result<Option<LibraryItem>> {
-        if let Some(item) = self.get::<LibraryItem>("library", id)? {
+    pub fn get_profile(&self, id: &str) -> Result<Option<Profile>> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT id, name, avatar, pin_hash, created_at, updated_at FROM profiles WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map([id], |row| {
+            let pin_hash: Option<String> = row.get(3)?;
+            Ok(Profile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                avatar: row.get(2)?,
+                has_pin: pin_hash.is_some(),
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?;
+        if let Some(res) = rows.next() {
+            Ok(Some(res?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn create_profile(&self, input: CreateProfileInput) -> Result<Profile> {
+        let name = input.name.trim();
+        if name.is_empty() {
+            bail!("Profile name cannot be empty");
+        }
+        let id = format!("prof_{}", uuid::Uuid::new_v4().simple());
+        let avatar = input.avatar.unwrap_or_else(|| "default".into());
+        let now = timestamp_ms();
+        let (pin_salt, pin_hash) = if let Some(pin) = input.pin {
+            let pin = pin.trim();
+            if pin.is_empty() {
+                (None, None)
+            } else {
+                let salt = uuid::Uuid::new_v4().simple().to_string();
+                let hash = hash_pin(pin, &salt);
+                (Some(salt), Some(hash))
+            }
+        } else {
+            (None, None)
+        };
+
+        let has_pin = pin_hash.is_some();
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        connection.execute(
+            "INSERT INTO profiles (id, name, avatar, pin_salt, pin_hash, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id, name, avatar, pin_salt, pin_hash, now, now],
+        )?;
+
+        Ok(Profile {
+            id,
+            name: name.to_string(),
+            avatar,
+            has_pin,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub fn update_profile(&self, id: &str, input: UpdateProfileInput) -> Result<Profile> {
+        let existing = self.get_profile(id)?.context("Profile not found")?;
+        let name = input.name.map(|n| n.trim().to_string()).unwrap_or(existing.name);
+        if name.is_empty() {
+            bail!("Profile name cannot be empty");
+        }
+        let avatar = input.avatar.unwrap_or(existing.avatar);
+        let now = timestamp_ms();
+
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+
+        if input.remove_pin == Some(true) {
+            connection.execute(
+                "UPDATE profiles SET name = ?1, avatar = ?2, pin_salt = NULL, pin_hash = NULL, updated_at = ?3 WHERE id = ?4",
+                params![name, avatar, now, id],
+            )?;
+        } else if let Some(pin) = input.pin {
+            let pin = pin.trim();
+            if pin.is_empty() {
+                connection.execute(
+                    "UPDATE profiles SET name = ?1, avatar = ?2, pin_salt = NULL, pin_hash = NULL, updated_at = ?3 WHERE id = ?4",
+                    params![name, avatar, now, id],
+                )?;
+            } else {
+                let salt = uuid::Uuid::new_v4().simple().to_string();
+                let hash = hash_pin(pin, &salt);
+                connection.execute(
+                    "UPDATE profiles SET name = ?1, avatar = ?2, pin_salt = ?3, pin_hash = ?4, updated_at = ?5 WHERE id = ?6",
+                    params![name, avatar, salt, hash, now, id],
+                )?;
+            }
+        } else {
+            connection.execute(
+                "UPDATE profiles SET name = ?1, avatar = ?2, updated_at = ?3 WHERE id = ?4",
+                params![name, avatar, now, id],
+            )?;
+        }
+        drop(connection);
+
+        let updated = self.get_profile(id)?.context("Profile not found after update")?;
+        Ok(updated)
+    }
+
+    pub fn delete_profile(&self, id: &str) -> Result<()> {
+        let profiles = self.list_profiles()?;
+        if profiles.len() <= 1 {
+            bail!("Cannot delete the only remaining profile");
+        }
+        if !profiles.iter().any(|p| p.id == id) {
+            bail!("Profile not found");
+        }
+
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+
+        let prefix = format!("{id}::");
+        connection.execute("DELETE FROM profiles WHERE id = ?1", [id])?;
+        connection.execute(
+            "DELETE FROM records WHERE kind = 'library' AND (substr(id, 1, length(?1)) = ?1 OR (id NOT LIKE '%::%' AND ?2 = 'default'))",
+            params![&prefix, id],
+        )?;
+        connection.execute(
+            "DELETE FROM records WHERE kind = 'history' AND (substr(id, 1, length(?1)) = ?1 OR (id NOT LIKE '%::%' AND ?2 = 'default'))",
+            params![&prefix, id],
+        )?;
+        connection.execute(
+            "DELETE FROM records WHERE kind = 'search_history' AND substr(id, 1, length(?1)) = ?1",
+            [&prefix],
+        )?;
+        connection.execute(
+            "DELETE FROM watch_progress WHERE profile_id = ?1",
+            [id],
+        )?;
+
+        drop(connection);
+        if let Ok(mut settings) = self.get_settings() {
+            let mut changed = false;
+            if settings.profiles.remove(id).is_some() {
+                changed = true;
+            }
+            if settings.global.default_profile_id.as_deref() == Some(id) {
+                settings.global.default_profile_id = None;
+                changed = true;
+            }
+            if changed {
+                let _ = self.put("settings", "app", &settings);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn verify_profile_pin(&self, id: &str, pin: &str) -> Result<bool> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT pin_salt, pin_hash FROM profiles WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map([id], |row| {
+            let salt: Option<String> = row.get(0)?;
+            let hash: Option<String> = row.get(1)?;
+            Ok((salt, hash))
+        })?;
+        if let Some(res) = rows.next() {
+            let (salt, hash) = res?;
+            match (salt, hash) {
+                (Some(salt), Some(expected_hash)) => {
+                    let computed = hash_pin(pin.trim(), &salt);
+                    Ok(computed == expected_hash)
+                }
+                _ => Ok(true),
+            }
+        } else {
+            bail!("Profile not found");
+        }
+    }
+
+    pub fn set_profile_pin(&self, id: &str, pin: Option<&str>) -> Result<()> {
+        let _ = self.get_profile(id)?.context("Profile not found")?;
+        let (pin_salt, pin_hash) = match pin {
+            Some(p) if !p.trim().is_empty() => {
+                let salt = uuid::Uuid::new_v4().simple().to_string();
+                let hash = hash_pin(p.trim(), &salt);
+                (Some(salt), Some(hash))
+            }
+            _ => (None, None),
+        };
+        let now = timestamp_ms();
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        connection.execute(
+            "UPDATE profiles SET pin_salt = ?1, pin_hash = ?2, updated_at = ?3 WHERE id = ?4",
+            params![pin_salt, pin_hash, now, id],
+        )?;
+        Ok(())
+    }
+
+    pub fn library(&self, profile_id: Option<&str>) -> Result<Vec<LibraryItem>> {
+        let pid = profile_id.unwrap_or("default");
+        let prefix = format!("{pid}::");
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT value FROM records WHERE kind = 'library' AND (substr(id, 1, length(?1)) = ?1 OR (id NOT LIKE '%::%' AND ?2 = 'default')) ORDER BY updated DESC, rowid DESC",
+        )?;
+        let rows = stmt.query_map(params![&prefix, pid], |row| row.get::<_, String>(0))?;
+        let mut items = Vec::new();
+        for r in rows {
+            let s = r?;
+            if let Ok(item) = serde_json::from_str::<LibraryItem>(&s) {
+                items.push(item);
+            }
+        }
+        Ok(items)
+    }
+
+    pub fn get_library_item(&self, id: &str, profile_id: Option<&str>) -> Result<Option<LibraryItem>> {
+        let pid = profile_id.unwrap_or("default");
+        let scoped_key = format!("{pid}::{id}");
+        if let Some(item) = self.get::<LibraryItem>("library", &scoped_key)? {
             return Ok(Some(item));
         }
+        if pid == "default" {
+            if let Some(item) = self.get::<LibraryItem>("library", id)? {
+                return Ok(Some(item));
+            }
+        }
         if let Some(resolved_id) = self.resolve_alias(id, "media")? {
-            return self.get::<LibraryItem>("library", &resolved_id);
+            let scoped_resolved = format!("{pid}::{resolved_id}");
+            if let Some(item) = self.get::<LibraryItem>("library", &scoped_resolved)? {
+                return Ok(Some(item));
+            }
+            if pid == "default" {
+                return self.get::<LibraryItem>("library", &resolved_id);
+            }
         }
         Ok(None)
     }
@@ -424,31 +725,33 @@ impl Store {
         status: WatchStatus,
         profile_id: Option<&str>,
     ) -> Result<LibraryItem> {
+        let pid = profile_id.unwrap_or("default");
         let media_id = compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
         item.media_id = Some(media_id.clone());
         let legacy_id = crate::repository::plugin_id(&item.provider_id, &item.url);
         let now_ms = timestamp_ms();
 
-        let mut entry = self.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
-            id: media_id.clone(),
-            item: item.clone(),
-            saved_at: now_ms,
-            watch_status: status,
-            is_favorite: false,
-            is_subscribed: false,
-            profile_id: profile_id.map(String::from).or_else(|| Some("default".into())),
-            updated_at: Some(now_ms),
-            extra: std::collections::BTreeMap::new(),
-        });
+        let mut entry = self
+            .get_library_item(&media_id, Some(pid))?
+            .unwrap_or_else(|| LibraryItem {
+                id: media_id.clone(),
+                item: item.clone(),
+                saved_at: now_ms,
+                watch_status: status,
+                is_favorite: false,
+                is_subscribed: false,
+                profile_id: Some(pid.to_string()),
+                updated_at: Some(now_ms),
+                extra: std::collections::BTreeMap::new(),
+            });
 
         entry.watch_status = status;
         entry.item = item;
         entry.updated_at = Some(now_ms);
-        if entry.profile_id.is_none() {
-            entry.profile_id = profile_id.map(String::from).or_else(|| Some("default".into()));
-        }
+        entry.profile_id = Some(pid.to_string());
 
-        self.put("library", &entry.id, &entry)?;
+        let scoped_key = format!("{pid}::{media_id}");
+        self.put("library", &scoped_key, &entry)?;
         self.put_alias(&legacy_id, "media", &media_id)?;
         Ok(entry)
     }
@@ -459,31 +762,33 @@ impl Store {
         is_favorite: bool,
         profile_id: Option<&str>,
     ) -> Result<LibraryItem> {
+        let pid = profile_id.unwrap_or("default");
         let media_id = compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
         item.media_id = Some(media_id.clone());
         let legacy_id = crate::repository::plugin_id(&item.provider_id, &item.url);
         let now_ms = timestamp_ms();
 
-        let mut entry = self.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
-            id: media_id.clone(),
-            item: item.clone(),
-            saved_at: now_ms,
-            watch_status: WatchStatus::None,
-            is_favorite,
-            is_subscribed: false,
-            profile_id: profile_id.map(String::from).or_else(|| Some("default".into())),
-            updated_at: Some(now_ms),
-            extra: std::collections::BTreeMap::new(),
-        });
+        let mut entry = self
+            .get_library_item(&media_id, Some(pid))?
+            .unwrap_or_else(|| LibraryItem {
+                id: media_id.clone(),
+                item: item.clone(),
+                saved_at: now_ms,
+                watch_status: WatchStatus::None,
+                is_favorite,
+                is_subscribed: false,
+                profile_id: Some(pid.to_string()),
+                updated_at: Some(now_ms),
+                extra: std::collections::BTreeMap::new(),
+            });
 
         entry.is_favorite = is_favorite;
         entry.item = item;
         entry.updated_at = Some(now_ms);
-        if entry.profile_id.is_none() {
-            entry.profile_id = profile_id.map(String::from).or_else(|| Some("default".into()));
-        }
+        entry.profile_id = Some(pid.to_string());
 
-        self.put("library", &entry.id, &entry)?;
+        let scoped_key = format!("{pid}::{media_id}");
+        self.put("library", &scoped_key, &entry)?;
         self.put_alias(&legacy_id, "media", &media_id)?;
         Ok(entry)
     }
@@ -494,64 +799,81 @@ impl Store {
         is_subscribed: bool,
         profile_id: Option<&str>,
     ) -> Result<LibraryItem> {
+        let pid = profile_id.unwrap_or("default");
         let media_id = compute_media_id(&item.provider_id, &item.url, item.unique_url.as_deref());
         item.media_id = Some(media_id.clone());
         let legacy_id = crate::repository::plugin_id(&item.provider_id, &item.url);
         let now_ms = timestamp_ms();
 
-        let mut entry = self.get_library_item(&media_id)?.unwrap_or_else(|| LibraryItem {
-            id: media_id.clone(),
-            item: item.clone(),
-            saved_at: now_ms,
-            watch_status: WatchStatus::None,
-            is_favorite: false,
-            is_subscribed,
-            profile_id: profile_id.map(String::from).or_else(|| Some("default".into())),
-            updated_at: Some(now_ms),
-            extra: std::collections::BTreeMap::new(),
-        });
+        let mut entry = self
+            .get_library_item(&media_id, Some(pid))?
+            .unwrap_or_else(|| LibraryItem {
+                id: media_id.clone(),
+                item: item.clone(),
+                saved_at: now_ms,
+                watch_status: WatchStatus::None,
+                is_favorite: false,
+                is_subscribed,
+                profile_id: Some(pid.to_string()),
+                updated_at: Some(now_ms),
+                extra: std::collections::BTreeMap::new(),
+            });
 
         entry.is_subscribed = is_subscribed;
         entry.item = item;
         entry.updated_at = Some(now_ms);
-        if entry.profile_id.is_none() {
-            entry.profile_id = profile_id.map(String::from).or_else(|| Some("default".into()));
-        }
+        entry.profile_id = Some(pid.to_string());
 
-        self.put("library", &entry.id, &entry)?;
+        let scoped_key = format!("{pid}::{media_id}");
+        self.put("library", &scoped_key, &entry)?;
         self.put_alias(&legacy_id, "media", &media_id)?;
         Ok(entry)
     }
 
-    pub fn remove_library_item(&self, id: &str) -> Result<()> {
+    pub fn remove_library_item(&self, id: &str, profile_id: Option<&str>) -> Result<()> {
+        let pid = profile_id.unwrap_or("default");
         let resolved = self.resolve_alias(id, "media")?.unwrap_or_else(|| id.to_string());
-        self.remove("library", &resolved)?;
+        let scoped_key = format!("{pid}::{resolved}");
+        self.remove("library", &scoped_key)?;
         if resolved != id {
-            self.remove("library", id)?;
+            let scoped_alias = format!("{pid}::{id}");
+            self.remove("library", &scoped_alias)?;
+        }
+        if pid == "default" {
+            self.remove("library", &resolved)?;
+            if resolved != id {
+                self.remove("library", id)?;
+            }
         }
         Ok(())
     }
 
-    pub fn clear_library(&self, status: Option<WatchStatus>) -> Result<()> {
+    pub fn clear_library(&self, status: Option<WatchStatus>, profile_id: Option<&str>) -> Result<()> {
+        let pid = profile_id.unwrap_or("default");
         match status {
             None => {
+                let prefix = format!("{pid}::");
                 let connection = self
                     .connection
                     .lock()
                     .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
-                connection.execute("DELETE FROM records WHERE kind = 'library'", [])?;
+                connection.execute(
+                    "DELETE FROM records WHERE kind = 'library' AND (substr(id, 1, length(?1)) = ?1 OR (id NOT LIKE '%::%' AND ?2 = 'default'))",
+                    params![&prefix, pid],
+                )?;
                 Ok(())
             }
             Some(target_status) => {
-                let items: Vec<LibraryItem> = self.library()?;
+                let items: Vec<LibraryItem> = self.library(Some(pid))?;
                 for mut item in items {
                     if item.watch_status == target_status {
                         if !item.is_favorite && !item.is_subscribed {
-                            self.remove_library_item(&item.id)?;
+                            self.remove_library_item(&item.id, Some(pid))?;
                         } else {
                             item.watch_status = WatchStatus::None;
                             item.updated_at = Some(timestamp_ms());
-                            self.put("library", &item.id, &item)?;
+                            let scoped_key = format!("{pid}::{}", item.id);
+                            self.put("library", &scoped_key, &item)?;
                         }
                     }
                 }
@@ -560,34 +882,68 @@ impl Store {
         }
     }
 
-    pub fn history(&self) -> Result<Vec<WatchEntry>> {
-        self.list("history")
+    pub fn history(&self, profile_id: Option<&str>) -> Result<Vec<WatchEntry>> {
+        let pid = profile_id.unwrap_or("default");
+        let prefix = format!("{pid}::");
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let mut stmt = connection.prepare(
+            "SELECT value FROM records WHERE kind = 'history' AND (substr(id, 1, length(?1)) = ?1 OR (id NOT LIKE '%::%' AND ?2 = 'default')) ORDER BY updated DESC, rowid DESC",
+        )?;
+        let rows = stmt.query_map(params![&prefix, pid], |row| row.get::<_, String>(0))?;
+        let mut entries = Vec::new();
+        for r in rows {
+            let s = r?;
+            if let Ok(entry) = serde_json::from_str::<WatchEntry>(&s) {
+                entries.push(entry);
+            }
+        }
+        Ok(entries)
     }
 
-    pub fn remove_history_item(&self, id: &str) -> Result<()> {
+    pub fn remove_history_item(&self, id: &str, profile_id: Option<&str>) -> Result<()> {
+        let pid = profile_id.unwrap_or("default");
         let resolved = self.resolve_alias(id, "episode")?.unwrap_or_else(|| id.to_string());
-        self.remove("history", &resolved)?;
+        let scoped_key = format!("{pid}::{resolved}");
+        self.remove("history", &scoped_key)?;
         if resolved != id {
-            self.remove("history", id)?;
+            let scoped_alias = format!("{pid}::{id}");
+            self.remove("history", &scoped_alias)?;
+        }
+        if pid == "default" {
+            self.remove("history", &resolved)?;
+            if resolved != id {
+                self.remove("history", id)?;
+            }
         }
         let connection = self
             .connection
             .lock()
             .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
         connection.execute(
-            "DELETE FROM watch_progress WHERE episode_id = ?1 OR episode_id = ?2",
-            params![resolved, id],
+            "DELETE FROM watch_progress WHERE profile_id = ?1 AND (episode_id = ?2 OR episode_id = ?3)",
+            params![pid, resolved, id],
         )?;
         Ok(())
     }
 
-    pub fn clear_history(&self) -> Result<()> {
+    pub fn clear_history(&self, profile_id: Option<&str>) -> Result<()> {
+        let pid = profile_id.unwrap_or("default");
+        let prefix = format!("{pid}::");
         let connection = self
             .connection
             .lock()
             .map_err(|_| anyhow::anyhow!("Database lock failed"))?;
-        connection.execute("DELETE FROM records WHERE kind = 'history'", [])?;
-        connection.execute("DELETE FROM watch_progress", [])?;
+        connection.execute(
+            "DELETE FROM records WHERE kind = 'history' AND (substr(id, 1, length(?1)) = ?1 OR (id NOT LIKE '%::%' AND ?2 = 'default'))",
+            params![&prefix, pid],
+        )?;
+        connection.execute(
+            "DELETE FROM watch_progress WHERE profile_id = ?1",
+            [pid],
+        )?;
         Ok(())
     }
 
@@ -889,8 +1245,9 @@ impl Store {
             .clone()
             .unwrap_or_else(|| compute_media_id(&watch.item.provider_id, &watch.item.url, watch.item.unique_url.as_deref()));
         let episode_id = watch.id.clone();
+        let scoped_history_id = format!("{profile_id}::{episode_id}");
 
-        self.put("history", &episode_id, watch)?;
+        self.put("history", &scoped_history_id, watch)?;
         self.save_episode_payload(&episode_id, &media_id, &watch.episode.data)?;
 
         let legacy_data_alias = crate::repository::plugin_id(&watch.item.provider_id, &watch.episode.data);

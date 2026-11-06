@@ -378,6 +378,8 @@ export interface Snapshot {
   library: LibraryItem[];
   history: WatchEntry[];
   status: RuntimeStatus;
+  profiles: Profile[];
+  activeProfileId?: string;
   extensionStates?: ExtensionState[];
   settings?: Settings;
   providers?: Provider[];
@@ -391,8 +393,32 @@ export interface AppearanceSettings {
   [key: string]: unknown;
 }
 
+export interface Profile {
+  id: string;
+  name: string;
+  avatar: string;
+  hasPin: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateProfileInput {
+  name: string;
+  avatar?: string;
+  pin?: string;
+}
+
+export interface UpdateProfileInput {
+  name?: string;
+  avatar?: string;
+  pin?: string;
+  removePin?: boolean;
+}
+
 export interface GlobalSettings {
   appearance: AppearanceSettings;
+  defaultProfileId?: string;
+  autoSelectProfile?: boolean;
   [key: string]: unknown;
 }
 
