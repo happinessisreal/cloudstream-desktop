@@ -325,7 +325,7 @@ private suspend fun handle(method: String, params: JsonNode, idNode: JsonNode?):
         val subtitles = java.util.Collections.synchronizedList(mutableListOf<Map<String, Any?>>())
         withTimeout(timeout) {
             api.loadLinks(params.path("data").asText(), false, { sub ->
-                val mapped = mapSubtitle(sub)
+                val mapped = mapSubtitle(sub, api, params.path("providerId").asText())
                 subtitles.add(mapped)
                 if (idNode != null && !idNode.isNull) {
                     sendFrame(mapOf(
@@ -415,7 +415,20 @@ private fun dispatchMethod(method: String, params: JsonNode, idNode: JsonNode?) 
     job.start()
 }
 
+/**
+ * Cloudstream Android sets these from its sync services at start-up. Without them every id an
+ * extension adds with `addMalId`, `addAniListId`, `addKitsuId` or the Simkl helpers would be
+ * stored under an empty key and could never be matched to a metadata service.
+ */
+internal fun configureMetadataIdPrefixes() {
+    LoadResponse.malIdPrefix = "mal"
+    LoadResponse.kitsuIdPrefix = "kitsu"
+    LoadResponse.aniListIdPrefix = "anilist"
+    LoadResponse.simklIdPrefix = "simkl"
+}
+
 fun main() {
+    configureMetadataIdPrefixes()
     dev.cloudstream.worker.transport.MediaTransportService.start()
     Runtime.getRuntime().addShutdownHook(Thread {
         dev.cloudstream.worker.transport.MediaTransportService.stop()

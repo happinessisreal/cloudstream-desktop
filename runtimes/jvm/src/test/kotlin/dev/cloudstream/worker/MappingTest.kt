@@ -214,6 +214,8 @@ class MappingTest {
         val mappedDrm = mapStream(drmLink)
         assertEquals("drm", mappedDrm["kind"])
         assertEquals("DRM", mappedDrm["streamType"])
+        assertEquals("DASH", mappedDrm["linkType"], "the container behind the DRM link is kept")
+        assertEquals("M3U8", mappedHls["linkType"])
 
         @Suppress("UNCHECKED_CAST")
         val drm = mappedDrm["drm"] as Map<String, Any?>

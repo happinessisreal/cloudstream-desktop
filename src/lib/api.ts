@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { PlayerEvent, Settings, Snapshot } from './types';
+import type { DownloadEvent, PlayerEvent, Settings, Snapshot } from './types';
 
 export type PlayerEventListener = (event: PlayerEvent) => void;
 
@@ -12,8 +12,19 @@ export function emitPlayerEventForTest(event: PlayerEvent) {
   }
 }
 
+export type DownloadEventListener = (event: DownloadEvent | { type: 'refresh' }) => void;
+
+let downloadEventListeners: DownloadEventListener[] = [];
+
+export function emitDownloadEventForTest(event: DownloadEvent | { type: 'refresh' }) {
+  for (const listener of downloadEventListeners) {
+    listener(event);
+  }
+}
+
 declare global {
   interface Window {
+    __emitDownloadEvent?: (event: DownloadEvent | { type: 'refresh' }) => void;
     __CLOUDSTREAM_TEST__?: (command: string, args: Record<string, unknown>) => Promise<unknown>;
     __emitPlayerEvent?: (event: PlayerEvent) => void;
   }
@@ -21,6 +32,27 @@ declare global {
 
 if (typeof window !== 'undefined') {
   window.__emitPlayerEvent = emitPlayerEventForTest;
+  window.__emitDownloadEvent = emitDownloadEventForTest;
+}
+
+/** Live download queue changes. `refresh` means events were dropped and the list must be reloaded. */
+export async function onDownloadEvent(callback: DownloadEventListener): Promise<() => void> {
+  downloadEventListeners.push(callback);
+  const unlistenLocal = () => {
+    downloadEventListeners = downloadEventListeners.filter((l) => l !== callback);
+  };
+  if (!isTauri()) return unlistenLocal;
+  try {
+    const unlistenEvent = await listen<DownloadEvent>('download_event', (e) => callback(e.payload));
+    const unlistenRefresh = await listen('download_refresh', () => callback({ type: 'refresh' }));
+    return () => {
+      unlistenLocal();
+      unlistenEvent();
+      unlistenRefresh();
+    };
+  } catch {
+    return unlistenLocal;
+  }
 }
 
 export async function onPlayerEvent(callback: PlayerEventListener): Promise<() => void> {
@@ -113,6 +145,13 @@ export const defaultSettings: Settings = {
   global: {
     appearance: {
       posterDensity: 'comfortable',
+      theme: 'dark',
+      accent: 'indigo',
+      posterScale: 100,
+      titlePlacement: 'below',
+      showBadges: true,
+      motion: 'system',
+      navigation: 'pointer',
     },
     playback: {
       autoNext: true,
@@ -162,4 +201,62 @@ export async function updateSettings(
   profileId?: string,
 ): Promise<Settings> {
   return call<Settings>('update_settings', { patch, scope, profileId });
+}
+
+let entryListeners: (() => void)[] = [];
+
+/** Test hook: pretend another launch just delivered a link. */
+export function emitEntryPendingForTest() {
+  for (const listener of entryListeners) listener();
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as { __emitEntryPending?: () => void }).__emitEntryPending = emitEntryPendingForTest;
+}
+
+/** A link or file arrived while the app is running (a second launch, a media widget, a click). */
+export async function onEntryPending(callback: () => void): Promise<() => void> {
+  entryListeners.push(callback);
+  const unlistenLocal = () => {
+    entryListeners = entryListeners.filter((l) => l !== callback);
+  };
+  if (!isTauri()) return unlistenLocal;
+  try {
+    const unlisten = await listen('entry_pending', () => callback());
+    return () => {
+      unlistenLocal();
+      unlisten();
+    };
+  } catch {
+    return unlistenLocal;
+  }
+}
+
+let exitListeners: ((info: { playing: boolean; downloads: number }) => void)[] = [];
+
+/** Test hook: pretend the window was asked to close. */
+export function emitConfirmExitForTest(info: { playing: boolean; downloads: number }) {
+  for (const listener of exitListeners) listener(info);
+}
+
+if (typeof window !== 'undefined') {
+  (window as unknown as { __emitConfirmExit?: typeof emitConfirmExitForTest }).__emitConfirmExit = emitConfirmExitForTest;
+}
+
+/** The window was asked to close while something is running; the interface must ask first. */
+export async function onConfirmExit(callback: (info: { playing: boolean; downloads: number }) => void): Promise<() => void> {
+  exitListeners.push(callback);
+  const unlistenLocal = () => {
+    exitListeners = exitListeners.filter((l) => l !== callback);
+  };
+  if (!isTauri()) return unlistenLocal;
+  try {
+    const unlisten = await listen<{ playing: boolean; downloads: number }>('confirm_exit', (e) => callback(e.payload));
+    return () => {
+      unlistenLocal();
+      unlisten();
+    };
+  } catch {
+    return unlistenLocal;
+  }
 }

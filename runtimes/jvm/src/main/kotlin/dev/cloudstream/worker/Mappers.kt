@@ -251,7 +251,12 @@ internal fun mapDetails(api: MainAPI, details: LoadResponse): Map<String, Any?> 
 
 internal fun mapStream(link: ExtractorLink, api: MainAPI? = null, providerId: String? = null): Map<String, Any?> {
     val audioTracks = link.audioTracks?.map { track ->
-        mapOf("url" to track.url, "headers" to (track.headers ?: emptyMap<String, String>()))
+        val headers = track.headers ?: emptyMap<String, String>()
+        val handle = if (api != null) {
+            val interceptor = try { api.getVideoInterceptor(link) } catch (_: Exception) { null }
+            dev.cloudstream.worker.transport.MediaTransportService.registerRawResource(providerId ?: api.name, track.url, headers, interceptor = interceptor)
+        } else null
+        mapOf("url" to track.url, "headers" to headers, "resourceHandle" to handle)
     }.orEmpty()
 
     val playlist = if (link is ExtractorLinkPlayList) {
@@ -294,6 +299,8 @@ internal fun mapStream(link: ExtractorLink, api: MainAPI? = null, providerId: St
         "quality" to link.quality,
         "headers" to link.getAllHeaders(),
         "streamType" to (if (link is DrmExtractorLink) "DRM" else if (link is ExtractorLinkPlayList) "PLAYLIST" else link.type.name),
+        // The container behind a DRM link (DASH, VIDEO, M3U8), which "streamType" replaces with "DRM".
+        "linkType" to link.type.name,
         "kind" to kind,
         "source" to link.source,
         "extractorData" to link.extractorData,
@@ -307,11 +314,14 @@ internal fun mapStream(link: ExtractorLink, api: MainAPI? = null, providerId: St
     return map
 }
 
-internal fun mapSubtitle(sub: SubtitleFile): Map<String, Any?> {
+internal fun mapSubtitle(sub: SubtitleFile, api: MainAPI? = null, providerId: String? = null): Map<String, Any?> {
+    val headers = sub.headers ?: emptyMap<String, String>()
+    val handle = api?.let { dev.cloudstream.worker.transport.MediaTransportService.registerRawResource(providerId ?: it.name, sub.url, headers) }
     return mapOf(
         "lang" to sub.lang,
         "url" to sub.url,
         "headers" to (sub.headers ?: emptyMap<String, String>()),
-        "langTag" to sub.langTag
+        "langTag" to sub.langTag,
+        "resourceHandle" to handle
     )
 }

@@ -15,10 +15,12 @@ async fn fake_ipc_session_state_events_and_commands() {
         let mut reader = BufReader::new(read_half).lines();
 
         // 1. Read observe_property lines
-        for _ in 0..6 {
+        for (id, name) in cloudstream_core::player::OBSERVED_PROPERTIES {
             let line = reader.next_line().await.unwrap().unwrap();
             let val: serde_json::Value = serde_json::from_str(&line).unwrap();
             assert_eq!(val["command"][0], "observe_property");
+            assert_eq!(val["command"][1], id);
+            assert_eq!(val["command"][2], name);
         }
 
         // 2. Send file-loaded event

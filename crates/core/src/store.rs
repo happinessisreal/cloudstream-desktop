@@ -323,11 +323,38 @@ pub fn execute_migrations(connection: &mut Connection, migrations: &[Migration])
     Ok(())
 }
 
+fn provider_enabled_in(connection: &Connection, provider_id: &str) -> Result<bool> {
+    let is_disabled = |id: &str| -> Result<bool> {
+        Ok(connection.query_row("SELECT 1 FROM records WHERE kind='provider_disabled' AND id=?1", [id], |_| Ok(())).optional()?.is_some())
+    };
+    if is_disabled(provider_id)? { return Ok(false); }
+    let clone: Option<String> = connection.query_row("SELECT value FROM records WHERE kind='provider_clone' AND id=?1", [provider_id], |row| row.get(0)).optional()?;
+    if let Some(raw) = clone {
+        let clone: ProviderCloneConfig = serde_json::from_str(&raw)?;
+        if !clone.enabled || is_disabled(&clone.parent_provider_id)? { return Ok(false); }
+    }
+    Ok(true)
+}
+
+fn validate_download_lease(connection: &Connection, lease: &crate::download_queue::QueueLease) -> Result<()> {
+    let db_file: String = connection.query_row("SELECT file FROM pragma_database_list WHERE name='main'", [], |row| row.get(0))?;
+    let parent = Path::new(&db_file).parent().context("Download database has no parent folder")?;
+    if std::fs::canonicalize(parent)? != lease.directory { bail!("Download queue lock belongs to another database"); }
+    Ok(())
+}
+
 pub struct Store {
     connection: Mutex<Connection>,
 }
 
 impl Store {
+    /// Run `f` with exclusive access to the database connection. Used by backup/restore, which
+    /// need one transaction across several tables.
+    pub(crate) fn with_connection<T>(&self, f: impl FnOnce(&mut Connection) -> Result<T>) -> Result<T> {
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        f(&mut connection)
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -410,6 +437,11 @@ impl Store {
             set.insert(r?);
         }
         Ok(set)
+    }
+
+    pub fn provider_is_enabled(&self, provider_id: &str) -> Result<bool> {
+        let connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        provider_enabled_in(&connection, provider_id)
     }
 
     pub fn set_provider_disabled(&self, provider_id: &str, disabled: bool) -> Result<()> {
@@ -601,6 +633,10 @@ impl Store {
         )?;
         connection.execute(
             "DELETE FROM records WHERE kind = 'search_history' AND substr(id, 1, length(?1)) = ?1",
+            [&prefix],
+        )?;
+        connection.execute(
+            "DELETE FROM records WHERE kind = 'subscription_snapshot' AND substr(id, 1, length(?1)) = ?1",
             [&prefix],
         )?;
         connection.execute(
@@ -804,47 +840,209 @@ impl Store {
         item.media_id = Some(media_id.clone());
         let legacy_id = crate::repository::plugin_id(&item.provider_id, &item.url);
         let now_ms = timestamp_ms();
-
-        let mut entry = self
-            .get_library_item(&media_id, Some(pid))?
-            .unwrap_or_else(|| LibraryItem {
-                id: media_id.clone(),
-                item: item.clone(),
-                saved_at: now_ms,
-                watch_status: WatchStatus::None,
-                is_favorite: false,
-                is_subscribed,
-                profile_id: Some(pid.to_string()),
-                updated_at: Some(now_ms),
-                extra: std::collections::BTreeMap::new(),
-            });
-
+        let scoped_key = format!("{pid}::{media_id}");
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        let profile_exists = tx.query_row("SELECT 1 FROM profiles WHERE id=?1", [pid], |_| Ok(())).optional()?.is_some();
+        if !profile_exists { bail!("Profile not found"); }
+        let current: Option<String> = tx.query_row(
+            "SELECT value FROM records WHERE kind='library' AND id=?1", [&scoped_key], |row| row.get(0)
+        ).optional()?;
+        let current = if current.is_none() && pid == "default" {
+            tx.query_row("SELECT value FROM records WHERE kind='library' AND id=?1", [&media_id], |row| row.get(0)).optional()?
+        } else { current };
+        let mut entry: LibraryItem = match current {
+            Some(value) => serde_json::from_str(&value).context("Stored library item could not be read")?,
+            None => LibraryItem {
+                id: media_id.clone(), item: item.clone(), saved_at: now_ms,
+                watch_status: WatchStatus::None, is_favorite: false, is_subscribed: false,
+                profile_id: Some(pid.to_string()), updated_at: Some(now_ms), extra: Default::default(),
+            },
+        };
+        let was_subscribed = entry.is_subscribed;
         entry.is_subscribed = is_subscribed;
         entry.item = item;
         entry.updated_at = Some(now_ms);
         entry.profile_id = Some(pid.to_string());
-
-        let scoped_key = format!("{pid}::{media_id}");
-        self.put("library", &scoped_key, &entry)?;
-        self.put_alias(&legacy_id, "media", &media_id)?;
+        if is_subscribed {
+            if !was_subscribed || !entry.extra.get("subscriptionGeneration").is_some_and(|v| v.is_string()) {
+                entry.extra.insert("subscriptionGeneration".into(), serde_json::json!(uuid::Uuid::new_v4().to_string()));
+            }
+        } else {
+            entry.extra.remove("subscriptionGeneration");
+            tx.execute("DELETE FROM records WHERE kind='subscription_snapshot' AND id=?1", [&scoped_key])?;
+        }
+        tx.execute("INSERT INTO records(kind,id,value,updated) VALUES ('library',?1,?2,?3) ON CONFLICT(kind,id) DO UPDATE SET value=excluded.value,updated=excluded.updated",
+            params![&scoped_key, serde_json::to_string(&entry)?, timestamp()])?;
+        tx.execute("INSERT INTO aliases(alias_key,target_kind,target_id,created_at) VALUES (?1,'media',?2,?3) ON CONFLICT(alias_key) DO UPDATE SET target_kind=excluded.target_kind,target_id=excluded.target_id",
+            params![legacy_id, &media_id, now_ms])?;
+        tx.commit()?;
         Ok(entry)
+    }
+
+    /// Upgrade an older subscribed record lazily, without re-subscribing an item that was
+    /// removed while a check was being scheduled.
+    pub fn ensure_subscription_generation(&self, profile_id: &str, media_id: &str) -> Result<Option<String>> {
+        let key = format!("{profile_id}::{media_id}");
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='library' AND id=?1", [&key], |row| row.get(0)).optional()?;
+        let Some(raw) = raw else { return Ok(None) };
+        let mut entry: LibraryItem = serde_json::from_str(&raw)?;
+        if !entry.is_subscribed { return Ok(None); }
+        let generation = match entry.extra.get("subscriptionGeneration").and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+            Some(value) => value.to_owned(),
+            None => {
+                let value = uuid::Uuid::new_v4().to_string();
+                entry.extra.insert("subscriptionGeneration".into(), serde_json::json!(value));
+                tx.execute("UPDATE records SET value=?1 WHERE kind='library' AND id=?2", params![serde_json::to_string(&entry)?, &key])?;
+                value
+            }
+        };
+        tx.commit()?;
+        Ok(Some(generation))
+    }
+
+    pub fn subscription_is_current(&self, profile_id: &str, media_id: &str, generation: &str) -> Result<bool> {
+        let key = format!("{profile_id}::{media_id}");
+        let item: Option<LibraryItem> = self.get("library", &key)?;
+        let Some(entry) = item else { return Ok(false) };
+        if !entry.is_subscribed || entry.extra.get("subscriptionGeneration").and_then(|value| value.as_str()) != Some(generation) { return Ok(false); }
+        self.provider_is_enabled(&entry.item.provider_id)
+    }
+
+    /// Atomically merge one successful provider observation if this exact subscription still
+    /// exists. The generation guards unsubscribe/re-subscribe and profile deletion races.
+    pub fn apply_subscription_snapshot(
+        &self, profile_id: &str, media_id: &str, generation: &str,
+        observed: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+        checked_at_ms: u64, record_notifications: bool,
+    ) -> Result<Option<crate::subscriptions::SubscriptionChanges>> {
+        if observed.is_empty() || observed.values().all(|set| set.is_empty()) { bail!("Cannot save an empty subscription observation"); }
+        let key = format!("{profile_id}::{media_id}");
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        let value: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='library' AND id=?1", [&key], |row| row.get(0)).optional()?;
+        let Some(value) = value else { return Ok(None) };
+        let entry: LibraryItem = serde_json::from_str(&value)?;
+        if !entry.is_subscribed || entry.extra.get("subscriptionGeneration").and_then(|v| v.as_str()) != Some(generation) || !provider_enabled_in(&tx, &entry.item.provider_id)? { return Ok(None); }
+        let settings_raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='settings' AND id='app'", [], |row| row.get(0)).optional()?;
+        let notifications_enabled = settings_raw.map(|raw| serde_json::from_str::<Settings>(&raw)).transpose()?.unwrap_or_default().global.subscription_notifications;
+        let old: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='subscription_snapshot' AND id=?1", [&key], |row| row.get(0)).optional()?;
+        let previous: Option<crate::subscriptions::SubscriptionSnapshot> = old.map(|v| serde_json::from_str(&v)).transpose()?;
+        let mut snapshot = previous.filter(|old| old.generation == generation).unwrap_or_else(|| crate::subscriptions::SubscriptionSnapshot { generation: generation.into(), observed: Default::default(), pending: Default::default(), unread: Default::default(), checked_at_ms });
+        let first_check = snapshot.observed.is_empty();
+        let mut new_episodes = std::collections::BTreeMap::new();
+        for (group, keys) in observed {
+            let known = snapshot.observed.entry(group.clone()).or_default();
+            let added: Vec<_> = keys.difference(known).cloned().collect();
+            known.extend(keys);
+            if !first_check && !added.is_empty() {
+                if record_notifications && notifications_enabled { snapshot.pending.entry(group.clone()).or_default().extend(added.iter().cloned()); }
+                snapshot.unread.entry(group.clone()).or_default().extend(added.iter().cloned());
+                new_episodes.insert(group, added);
+            }
+        }
+        snapshot.checked_at_ms = checked_at_ms;
+        tx.execute("INSERT INTO records(kind,id,value,updated) VALUES ('subscription_snapshot',?1,?2,?3) ON CONFLICT(kind,id) DO UPDATE SET value=excluded.value,updated=excluded.updated",
+            params![&key, serde_json::to_string(&snapshot)?, checked_at_ms])?;
+        tx.commit()?;
+        Ok(Some(crate::subscriptions::SubscriptionChanges { first_check, new_episodes }))
+    }
+
+    /// Read unread changes without clearing them; the UI explicitly acknowledges what it shows.
+    pub fn subscription_unread(&self, profile_id: &str, media_id: &str, generation: &str) -> Result<std::collections::BTreeMap<String, std::collections::BTreeSet<String>>> {
+        let key = format!("{profile_id}::{media_id}");
+        let connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let library: Option<String> = connection.query_row("SELECT value FROM records WHERE kind='library' AND id=?1", [&key], |r| r.get(0)).optional()?;
+        let Some(library) = library else { return Ok(Default::default()) };
+        let entry: LibraryItem = serde_json::from_str(&library)?;
+        if !entry.is_subscribed || entry.extra.get("subscriptionGeneration").and_then(|v| v.as_str()) != Some(generation) { return Ok(Default::default()); }
+        let raw: Option<String> = connection.query_row("SELECT value FROM records WHERE kind='subscription_snapshot' AND id=?1", [&key], |r| r.get(0)).optional()?;
+        let Some(raw) = raw else { return Ok(Default::default()) };
+        let snapshot: crate::subscriptions::SubscriptionSnapshot = serde_json::from_str(&raw)?;
+        if snapshot.generation != generation { return Ok(Default::default()); }
+        Ok(snapshot.unread)
+    }
+
+    /// Acknowledge only identities actually shown; newer arrivals remain unread.
+    pub fn acknowledge_subscription_unread(&self, profile_id: &str, update: &crate::subscriptions::SubscriptionUpdate) -> Result<()> {
+        let key = format!("{profile_id}::{}", update.media_id);
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        let library: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='library' AND id=?1", [&key], |r| r.get(0)).optional()?;
+        let Some(library) = library else { return Ok(()) };
+        let entry: LibraryItem = serde_json::from_str(&library)?;
+        if !entry.is_subscribed || entry.extra.get("subscriptionGeneration").and_then(|v| v.as_str()) != Some(update.generation.as_str()) { return Ok(()); }
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='subscription_snapshot' AND id=?1", [&key], |r| r.get(0)).optional()?;
+        let Some(raw) = raw else { return Ok(()) };
+        let mut snapshot: crate::subscriptions::SubscriptionSnapshot = serde_json::from_str(&raw)?;
+        if snapshot.generation != update.generation { return Ok(()); }
+        for (group, episodes) in &update.episodes {
+            if let Some(unread) = snapshot.unread.get_mut(group) { for episode in episodes { unread.remove(episode); } }
+        }
+        snapshot.unread.retain(|_, episodes| !episodes.is_empty());
+        tx.execute("UPDATE records SET value=?1 WHERE kind='subscription_snapshot' AND id=?2", params![serde_json::to_string(&snapshot)?, &key])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Claim a pending batch durably before notifying the desktop. This prevents a restart
+    /// after delivery from repeating the same alert; failed sends can be restored below.
+    pub fn claim_subscription_alert(&self, profile_id: &str, media_id: &str) -> Result<Option<crate::subscriptions::SubscriptionAlert>> {
+        let key = format!("{profile_id}::{media_id}");
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        let settings: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='settings' AND id='app'", [], |row| row.get(0)).optional()?;
+        let enabled = settings.map(|s| serde_json::from_str::<Settings>(&s)).transpose()?.unwrap_or_default().global.subscription_notifications;
+        if !enabled { return Ok(None); }
+        let library: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='library' AND id=?1", [&key], |row| row.get(0)).optional()?;
+        let Some(library) = library else { return Ok(None) };
+        let entry: LibraryItem = serde_json::from_str(&library)?;
+        let Some(generation) = entry.extra.get("subscriptionGeneration").and_then(|v| v.as_str()) else { return Ok(None) };
+        if !entry.is_subscribed { return Ok(None); }
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='subscription_snapshot' AND id=?1", [&key], |row| row.get(0)).optional()?;
+        let Some(raw) = raw else { return Ok(None) };
+        let mut snapshot: crate::subscriptions::SubscriptionSnapshot = serde_json::from_str(&raw)?;
+        if snapshot.generation != generation || snapshot.pending.values().all(|v| v.is_empty()) { return Ok(None); }
+        let episodes = std::mem::take(&mut snapshot.pending);
+        tx.execute("UPDATE records SET value=?1 WHERE kind='subscription_snapshot' AND id=?2", params![serde_json::to_string(&snapshot)?, &key])?;
+        tx.commit()?;
+        Ok(Some(crate::subscriptions::SubscriptionAlert { profile_id: profile_id.into(), media_id: media_id.into(), generation: generation.into(), title: entry.item.name, episodes }))
+    }
+
+    /// Restore a failed send only if the same subscription and opt-in still exist.
+    pub fn restore_subscription_alert(&self, alert: &crate::subscriptions::SubscriptionAlert) -> Result<()> {
+        let key = format!("{}::{}", alert.profile_id, alert.media_id);
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        let settings: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='settings' AND id='app'", [], |row| row.get(0)).optional()?;
+        if !settings.map(|s| serde_json::from_str::<Settings>(&s)).transpose()?.unwrap_or_default().global.subscription_notifications { return Ok(()); }
+        let library: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='library' AND id=?1", [&key], |row| row.get(0)).optional()?;
+        let Some(library) = library else { return Ok(()) };
+        let entry: LibraryItem = serde_json::from_str(&library)?;
+        if !entry.is_subscribed || entry.extra.get("subscriptionGeneration").and_then(|v| v.as_str()) != Some(alert.generation.as_str()) { return Ok(()); }
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='subscription_snapshot' AND id=?1", [&key], |row| row.get(0)).optional()?;
+        let Some(raw) = raw else { return Ok(()) };
+        let mut snapshot: crate::subscriptions::SubscriptionSnapshot = serde_json::from_str(&raw)?;
+        if snapshot.generation != alert.generation { return Ok(()); }
+        for (group, episodes) in &alert.episodes { snapshot.pending.entry(group.clone()).or_default().extend(episodes.iter().cloned()); }
+        tx.execute("UPDATE records SET value=?1 WHERE kind='subscription_snapshot' AND id=?2", params![serde_json::to_string(&snapshot)?, &key])?;
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn remove_library_item(&self, id: &str, profile_id: Option<&str>) -> Result<()> {
         let pid = profile_id.unwrap_or("default");
         let resolved = self.resolve_alias(id, "media")?.unwrap_or_else(|| id.to_string());
-        let scoped_key = format!("{pid}::{resolved}");
-        self.remove("library", &scoped_key)?;
-        if resolved != id {
-            let scoped_alias = format!("{pid}::{id}");
-            self.remove("library", &scoped_alias)?;
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        for value in [resolved.as_str(), id] {
+            let key = format!("{pid}::{value}");
+            tx.execute("DELETE FROM records WHERE kind IN ('library','subscription_snapshot') AND id=?1", [&key])?;
+            if pid == "default" { tx.execute("DELETE FROM records WHERE kind='library' AND id=?1", [value])?; }
         }
-        if pid == "default" {
-            self.remove("library", &resolved)?;
-            if resolved != id {
-                self.remove("library", id)?;
-            }
-        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -861,6 +1059,7 @@ impl Store {
                     "DELETE FROM records WHERE kind = 'library' AND (substr(id, 1, length(?1)) = ?1 OR (id NOT LIKE '%::%' AND ?2 = 'default'))",
                     params![&prefix, pid],
                 )?;
+                connection.execute("DELETE FROM records WHERE kind = 'subscription_snapshot' AND substr(id, 1, length(?1)) = ?1", [&prefix])?;
                 Ok(())
             }
             Some(target_status) => {
@@ -964,10 +1163,29 @@ impl Store {
         scope: Option<&str>,
         profile_id: Option<&str>,
     ) -> Result<Settings> {
-        let mut settings = self.get_settings()?;
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction()?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='settings' AND id='app'", [], |r| r.get(0)).optional()?;
+        let mut settings: Settings = raw.map(|value| serde_json::from_str(&value)).transpose()?.unwrap_or_default();
+        let notifications_were_enabled = settings.global.subscription_notifications;
         apply_settings_patch(&mut settings, &patch, scope, profile_id)?;
         settings.revision = settings.revision.saturating_add(1);
-        self.put("settings", "app", &settings)?;
+        tx.execute("INSERT INTO records(kind,id,value,updated) VALUES ('settings','app',?1,?2) ON CONFLICT(kind,id) DO UPDATE SET value=excluded.value,updated=excluded.updated", params![serde_json::to_string(&settings)?, timestamp()])?;
+        if notifications_were_enabled && !settings.global.subscription_notifications {
+            let pending: Vec<(String, String)> = {
+                let mut stmt = tx.prepare("SELECT id,value FROM records WHERE kind='subscription_snapshot'")?;
+                let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+                rows.collect::<std::result::Result<_, _>>()?
+            };
+            for (id, raw) in pending {
+                let mut snapshot: crate::subscriptions::SubscriptionSnapshot = serde_json::from_str(&raw)?;
+                if !snapshot.pending.is_empty() {
+                    snapshot.pending.clear();
+                    tx.execute("UPDATE records SET value=?1 WHERE kind='subscription_snapshot' AND id=?2", params![serde_json::to_string(&snapshot)?, id])?;
+                }
+            }
+        }
+        tx.commit()?;
         Ok(settings)
     }
 
@@ -1016,6 +1234,293 @@ impl Store {
                 params![episode_id, media_id, data, timestamp_ms()],
             )?;
         Ok(())
+    }
+
+    /// Enqueue is idempotent per profile/media/episode, regardless of destination or mirror.
+    /// Provider payloads remain in the existing episode store, not in the visible queue record.
+    pub fn enqueue_download(&self, profile_id: &str, mut request: crate::download_queue::DownloadRequest) -> Result<crate::download_queue::DownloadJob> {
+        use crate::{download_queue::{DownloadJob, DownloadMetadata, DownloadState}, downloads::{DestinationIdentity, supported_direct_extension}};
+        if request.item.provider_id.trim().is_empty() || request.item.url.trim().is_empty() || request.episode.data.trim().is_empty() { bail!("The episode has no provider or playable payload"); }
+        if !supported_direct_extension(&request.extension) && request.extension != crate::downloads::HLS_EXTENSION { bail!("Unsupported download format"); }
+        for name in [&request.policy.source_name, &request.policy.stream_name].into_iter().flatten() {
+            if name.is_empty() || name.len() > 200 || name.chars().any(char::is_control) { bail!("Invalid preferred source name"); }
+        }
+        let destination = std::fs::canonicalize(&request.destination).context("Download folder is unavailable")?;
+        let destination_identity = DestinationIdentity::from_path(&destination)?;
+        let media_id = compute_media_id(&request.item.provider_id, &request.item.url, request.item.unique_url.as_deref());
+        let episode_id = match request.episode.id.as_deref() {
+            Some(id) if id.starts_with(&format!("{media_id}::")) => id.to_owned(),
+            _ => compute_episode_id(&media_id, &request.episode, request.episode.dub_status, request.episode.index.and_then(|n| usize::try_from(n).ok())),
+        };
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        if tx.query_row("SELECT 1 FROM profiles WHERE id=?1", [profile_id], |_| Ok(())).optional()?.is_none() { bail!("Profile not found"); }
+        let jobs: Vec<DownloadJob> = {
+            let mut statement = tx.prepare("SELECT value FROM records WHERE kind='download_job'")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect::<Result<_>>()?
+        };
+        // Refresh the resolver payload even for an idempotent enqueue; links may have expired.
+        tx.execute("INSERT INTO episode_payloads(episode_id,media_id,data,updated_at) VALUES (?1,?2,?3,?4) ON CONFLICT(episode_id) DO UPDATE SET media_id=excluded.media_id,data=excluded.data,updated_at=excluded.updated_at",
+            params![&episode_id, &media_id, &request.episode.data, timestamp_ms()])?;
+        let mut item = request.item.clone();
+        item.media_id = Some(media_id.clone());
+        let mut episode = request.episode.clone();
+        episode.id = Some(episode_id.clone());
+        episode.data.clear();
+        let metadata = serde_json::to_string(&DownloadMetadata { item, episode })?;
+        if let Some(existing) = jobs.iter().find(|job| job.profile_id == profile_id && job.media_id == media_id && job.episode_id == episode_id) {
+            let existing = existing.clone();
+            tx.execute("INSERT INTO records(kind,id,value,updated) VALUES ('download_metadata',?1,?2,?3) ON CONFLICT(kind,id) DO UPDATE SET value=excluded.value,updated=excluded.updated", params![&existing.id, &metadata, timestamp()])?;
+            tx.commit()?; return Ok(existing);
+        }
+        if jobs.len() >= 10_000 { bail!("The download queue has reached its limit"); }
+        let order = jobs.iter().map(|job| job.order).max().unwrap_or(0).checked_add(1).context("Download queue order overflow")?;
+        let now = timestamp_ms();
+        let job = DownloadJob {
+            id: uuid::Uuid::new_v4().to_string(), profile_id: profile_id.into(), media_id, episode_id,
+            provider_id: std::mem::take(&mut request.item.provider_id), title: std::mem::take(&mut request.item.name),
+            episode_name: std::mem::take(&mut request.episode.name), season: request.episode.season, episode: request.episode.episode,
+            destination, destination_identity, extension: request.extension, policy: request.policy,
+            state: DownloadState::Queued, bytes: 0, total: None, output: None, error: None, order,
+            revision: 1, repair_of: None, created_at_ms: now, updated_at_ms: now,
+        };
+        tx.execute("INSERT INTO records(kind,id,value,updated) VALUES ('download_job',?1,?2,?3)", params![&job.id, serde_json::to_string(&job)?, timestamp()])?;
+        tx.execute("INSERT INTO records(kind,id,value,updated) VALUES ('download_metadata',?1,?2,?3)", params![&job.id, metadata, timestamp()])?;
+        tx.commit()?;
+        Ok(job)
+    }
+
+    pub fn download_jobs(&self, profile_id: Option<&str>) -> Result<Vec<crate::download_queue::DownloadJob>> {
+        let mut jobs: Vec<crate::download_queue::DownloadJob> = self.list("download_job")?;
+        if let Some(profile) = profile_id { jobs.retain(|job| job.profile_id == profile); }
+        jobs.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(&b.id)));
+        Ok(jobs)
+    }
+
+    /// Requires the app-wide lease so a second process cannot reset running jobs.
+    pub fn recover_download_queue(&self, lease: &crate::download_queue::QueueLease) -> Result<usize> {
+        use crate::download_queue::{DownloadJob, DownloadState};
+        let mut recovered_once = lease.recovered.lock().map_err(|_| anyhow::anyhow!("Download queue lock failed"))?;
+        if *recovered_once { bail!("Download queue recovery has already run"); }
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        validate_download_lease(&connection, lease)?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let jobs: Vec<DownloadJob> = {
+            let mut statement = tx.prepare("SELECT value FROM records WHERE kind='download_job'")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect::<Result<_>>()?
+        };
+        let mut recovered = 0;
+        for mut job in jobs.into_iter().filter(|job| job.state.active()) {
+            let profile_exists = tx.query_row("SELECT 1 FROM profiles WHERE id=?1", [&job.profile_id], |_| Ok(())).optional()?.is_some();
+            job.state = if profile_exists { DownloadState::Queued } else { DownloadState::Paused }; job.revision = job.revision.checked_add(1).context("Download revision overflow")?;
+            job.updated_at_ms = timestamp_ms(); job.error = None;
+            tx.execute("UPDATE records SET value=?1,updated=?2 WHERE kind='download_job' AND id=?3", params![serde_json::to_string(&job)?, timestamp(), &job.id])?;
+            recovered += 1;
+        }
+        tx.commit()?;
+        *recovered_once = true;
+        Ok(recovered)
+    }
+
+    /// Atomically reserve the next job while enforcing a single global concurrency limit.
+    pub fn claim_next_download(&self, lease: &crate::download_queue::QueueLease, max_active: usize) -> Result<Option<crate::download_queue::DownloadJob>> {
+        use crate::download_queue::{DownloadJob, DownloadState};
+        if !(1..=4).contains(&max_active) { bail!("Download concurrency must be between 1 and 4"); }
+        let recovered = lease.recovered.lock().map_err(|_| anyhow::anyhow!("Download queue lock failed"))?;
+        if !*recovered { bail!("Recover the download queue before claiming jobs"); }
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        validate_download_lease(&connection, lease)?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let mut jobs: Vec<DownloadJob> = {
+            let mut statement = tx.prepare("SELECT value FROM records WHERE kind='download_job'")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect::<Result<_>>()?
+        };
+        if jobs.iter().filter(|job| job.state.active()).count() >= max_active { return Ok(None); }
+        jobs.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(&b.id)));
+        let mut eligible = None;
+        for job in jobs.into_iter().filter(|job| job.state == DownloadState::Queued) {
+            if tx.query_row("SELECT 1 FROM profiles WHERE id=?1", [&job.profile_id], |_| Ok(())).optional()?.is_some() {
+                eligible = Some(job); break;
+            }
+        }
+        let Some(mut job) = eligible else { return Ok(None) };
+        job.state = DownloadState::Resolving; job.revision = job.revision.checked_add(1).context("Download revision overflow")?;
+        job.updated_at_ms = timestamp_ms(); job.error = None;
+        tx.execute("UPDATE records SET value=?1,updated=?2 WHERE kind='download_job' AND id=?3", params![serde_json::to_string(&job)?, timestamp(), &job.id])?;
+        tx.commit()?;
+        Ok(Some(job))
+    }
+
+    /// Remove a finished, stopped or failed job's record. Active jobs must be paused or cancelled
+    /// first; the state is re-checked inside the transaction so a claim cannot race the removal.
+    pub fn delete_download_job(&self, id: &str, profile_id: &str) -> Result<crate::download_queue::DownloadJob> {
+        use crate::download_queue::DownloadJob;
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='download_job' AND id=?1", [id], |row| row.get(0)).optional()?;
+        let job: DownloadJob = serde_json::from_str(&raw.context("Download job not found")?)?;
+        if job.profile_id != profile_id { bail!("Download job not found"); }
+        if job.state.active() { bail!("Pause or cancel the download before removing it"); }
+        tx.execute("DELETE FROM records WHERE kind='download_job' AND id=?1", [id])?;
+        tx.execute("DELETE FROM records WHERE kind='download_metadata' AND id=?1", [id])?;
+        tx.commit()?;
+        Ok(job)
+    }
+
+    pub fn get_download_job(&self, id: &str) -> Result<Option<crate::download_queue::DownloadJob>> {
+        self.get("download_job", id)
+    }
+
+    /// Queue a separate replacement copy without touching the damaged output. Existing repairs
+    /// are returned instead of creating duplicate jobs when the user clicks more than once.
+    pub fn enqueue_download_repair(&self, id: &str, profile_id: &str) -> Result<crate::download_queue::DownloadJob> {
+        use crate::download_queue::{DownloadJob, DownloadState};
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='download_job' AND id=?1", [id], |row| row.get(0)).optional()?;
+        let original: DownloadJob = serde_json::from_str(&raw.context("Download job not found")?)?;
+        if original.profile_id != profile_id { bail!("Download job not found"); }
+        if original.state != DownloadState::Completed { bail!("Only finished downloads can be repaired"); }
+        if crate::downloads::DestinationIdentity::from_path(&original.destination)? != original.destination_identity { bail!("The download folder has changed. Choose it again"); }
+        if tx.query_row("SELECT 1 FROM episode_payloads WHERE episode_id=?1", [&original.episode_id], |_| Ok(())).optional()?.is_none() {
+            bail!("The source information for this episode is unavailable");
+        }
+        let jobs: Vec<DownloadJob> = {
+            let mut statement = tx.prepare("SELECT value FROM records WHERE kind='download_job'")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect::<Result<_>>()?
+        };
+        if let Some(existing) = jobs.iter().find(|job| job.profile_id == profile_id && job.repair_of.as_deref() == Some(id) && job.state != DownloadState::Canceled) {
+            let existing = existing.clone(); tx.commit()?; return Ok(existing);
+        }
+        if jobs.len() >= 10_000 { bail!("The download queue has reached its limit"); }
+        let mut repair = original.clone();
+        repair.id = uuid::Uuid::new_v4().to_string();
+        repair.repair_of = Some(id.into());
+        repair.order = jobs.iter().map(|job| job.order).max().unwrap_or(0).checked_add(1).context("Download queue order overflow")?;
+        repair.state = DownloadState::Queued; repair.bytes = 0; repair.total = None; repair.output = None; repair.error = None;
+        repair.revision = 1; repair.created_at_ms = timestamp_ms(); repair.updated_at_ms = repair.created_at_ms;
+        tx.execute("INSERT INTO records(kind,id,value,updated) VALUES ('download_job',?1,?2,?3)", params![&repair.id, serde_json::to_string(&repair)?, timestamp()])?;
+        tx.execute("INSERT INTO records(kind,id,value,updated) SELECT 'download_metadata',?1,value,?2 FROM records WHERE kind='download_metadata' AND id=?3", params![&repair.id, timestamp(), id])?;
+        tx.commit()?;
+        Ok(repair)
+    }
+
+    /// User actions read and transition under one transaction, so progress cannot cause a
+    /// spurious compare-and-set failure while a pause or cancel is being requested.
+    pub fn control_download(&self, id: &str, profile_id: &str, action: crate::download_queue::DownloadAction) -> Result<crate::download_queue::DownloadJob> {
+        use crate::download_queue::{DownloadAction, DownloadJob, DownloadState};
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='download_job' AND id=?1", [id], |row| row.get(0)).optional()?;
+        let mut job: DownloadJob = serde_json::from_str(&raw.context("Download job not found")?)?;
+        if job.profile_id != profile_id { bail!("Download job not found"); }
+        let next = match (action, job.state) {
+            (DownloadAction::Pause, DownloadState::Queued | DownloadState::Resolving | DownloadState::Downloading) => DownloadState::Paused,
+            (DownloadAction::Cancel, DownloadState::Queued | DownloadState::Resolving | DownloadState::Downloading | DownloadState::Paused | DownloadState::Failed) => DownloadState::Canceled,
+            (DownloadAction::Resume, DownloadState::Paused) | (DownloadAction::Retry, DownloadState::Failed | DownloadState::Canceled) => DownloadState::Queued,
+            (DownloadAction::Pause, DownloadState::Paused) | (DownloadAction::Cancel, DownloadState::Canceled) => return Ok(job),
+            _ => bail!("That action is not available for this download"),
+        };
+        job.state = next; job.error = None; job.revision = job.revision.checked_add(1).context("Download revision overflow")?; job.updated_at_ms = timestamp_ms();
+        tx.execute("UPDATE records SET value=?1,updated=?2 WHERE kind='download_job' AND id=?3", params![serde_json::to_string(&job)?, timestamp(), id])?;
+        tx.commit()?;
+        Ok(job)
+    }
+
+    /// Compare-and-set prevents a late worker event from reversing pause, cancel or retry.
+    pub fn transition_download(&self, id: &str, profile_id: &str, expected_revision: u64,
+        next: crate::download_queue::DownloadState, error: Option<&str>, output: Option<&Path>, bytes: u64, total: Option<u64>) -> Result<crate::download_queue::DownloadJob> {
+        use crate::download_queue::{DownloadJob, DownloadState};
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='download_job' AND id=?1", [id], |row| row.get(0)).optional()?;
+        let mut job: DownloadJob = serde_json::from_str(&raw.context("Download job not found")?)?;
+        if job.profile_id != profile_id { bail!("Download job not found"); }
+        if job.revision != expected_revision { bail!("Download changed; refresh the queue"); }
+        if !job.state.permits(next) { bail!("Invalid download state transition"); }
+        if total.is_some_and(|total| bytes > total) { bail!("Invalid download progress"); }
+        if error.is_some_and(|message| message.len() > 512 || message.chars().any(char::is_control) || message.contains("://")) { bail!("Invalid download error message"); }
+        if next == DownloadState::Failed && error.is_none_or(|message| message.trim().is_empty()) { bail!("A failed download needs a reason"); }
+        if next == DownloadState::Completed {
+            let expected = job.destination.join(format!("cloudstream-{}.{}", job.id, job.extension));
+            if output != Some(expected.as_path()) { bail!("Unexpected download output path"); }
+            if crate::downloads::DestinationIdentity::from_path(&job.destination)? != job.destination_identity { bail!("The download folder has changed"); }
+            if job.extension == crate::downloads::HLS_EXTENSION {
+                if !crate::hls_download::verify_completed_folder(&job.destination, job.destination_identity, &job.id, bytes)? { bail!("Downloaded folder was not published by this job or is incomplete"); }
+            } else {
+                let metadata = std::fs::symlink_metadata(&expected).context("Downloaded file is unavailable")?;
+                if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() != bytes || bytes == 0 { bail!("Downloaded file does not match the completed job"); }
+                if !crate::downloads::verify_completed_file(&job.destination, job.destination_identity, &job.id, &job.extension, bytes)? { bail!("Downloaded file was not published by this job"); }
+            }
+            job.output = Some(expected);
+        } else if output.is_some() { bail!("Only completed downloads have an output file"); }
+        job.state = next; job.bytes = bytes; job.total = total;
+        job.error = if next == DownloadState::Failed { error.map(str::to_owned) } else { None };
+        job.revision = job.revision.checked_add(1).context("Download revision overflow")?; job.updated_at_ms = timestamp_ms();
+        tx.execute("UPDATE records SET value=?1,updated=?2 WHERE kind='download_job' AND id=?3", params![serde_json::to_string(&job)?, timestamp(), id])?;
+        tx.commit()?;
+        Ok(job)
+    }
+
+    /// Reorder only the queued jobs of this profile, preserving other profiles' queue slots.
+    pub fn reorder_downloads(&self, profile_id: &str, ids: &[String]) -> Result<()> {
+        use crate::download_queue::{DownloadJob, DownloadState};
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let mut jobs: Vec<DownloadJob> = {
+            let mut statement = tx.prepare("SELECT value FROM records WHERE kind='download_job'")?;
+            let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+            rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect::<Result<_>>()?
+        };
+        jobs.retain(|job| job.profile_id == profile_id && job.state == DownloadState::Queued);
+        jobs.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(&b.id)));
+        let expected: std::collections::HashSet<_> = jobs.iter().map(|job| job.id.as_str()).collect();
+        let provided: std::collections::HashSet<_> = ids.iter().map(String::as_str).collect();
+        if ids.len() != jobs.len() || provided.len() != ids.len() || expected != provided { bail!("The download queue changed; refresh before reordering"); }
+        let slots: Vec<u64> = jobs.iter().map(|job| job.order).collect();
+        let mut by_id: std::collections::HashMap<_, _> = jobs.into_iter().map(|job| (job.id.clone(), job)).collect();
+        for (id, order) in ids.iter().zip(slots) {
+            let mut job = by_id.remove(id).unwrap();
+            if job.order == order { continue; }
+            job.order = order; job.updated_at_ms = timestamp_ms(); job.revision = job.revision.checked_add(1).context("Download revision overflow")?;
+            tx.execute("UPDATE records SET value=?1,updated=?2 WHERE kind='download_job' AND id=?3", params![serde_json::to_string(&job)?, timestamp(), id])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Record the last durable partial length after a user stop, without undoing the stop.
+    pub fn update_stopped_download_progress(&self, id: &str, profile_id: &str, expected_revision: u64, bytes: u64, total: Option<u64>) -> Result<crate::download_queue::DownloadJob> {
+        use crate::download_queue::{DownloadJob, DownloadState};
+        if total.is_some_and(|size| bytes > size) { bail!("Invalid download progress"); }
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='download_job' AND id=?1", [id], |row| row.get(0)).optional()?;
+        let mut job: DownloadJob = serde_json::from_str(&raw.context("Download job not found")?)?;
+        if job.profile_id != profile_id || job.revision != expected_revision || !matches!(job.state, DownloadState::Paused | DownloadState::Canceled) { bail!("Download changed; refresh the queue"); }
+        job.bytes = bytes; job.total = total; job.revision = job.revision.checked_add(1).context("Download revision overflow")?; job.updated_at_ms = timestamp_ms();
+        tx.execute("UPDATE records SET value=?1,updated=?2 WHERE kind='download_job' AND id=?3", params![serde_json::to_string(&job)?, timestamp(), id])?;
+        tx.commit()?;
+        Ok(job)
+    }
+
+    pub fn update_download_progress(&self, id: &str, profile_id: &str, expected_revision: u64, bytes: u64, total: Option<u64>) -> Result<crate::download_queue::DownloadJob> {
+        use crate::download_queue::{DownloadJob, DownloadState};
+        if total.is_some_and(|size| bytes > size) { bail!("Invalid download progress"); }
+        let mut connection = self.connection.lock().map_err(|_| anyhow::anyhow!("Database lock failed"))?;
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let raw: Option<String> = tx.query_row("SELECT value FROM records WHERE kind='download_job' AND id=?1", [id], |row| row.get(0)).optional()?;
+        let mut job: DownloadJob = serde_json::from_str(&raw.context("Download job not found")?)?;
+        if job.profile_id != profile_id { bail!("Download job not found"); }
+        if job.revision != expected_revision || job.state != DownloadState::Downloading { bail!("Download changed; refresh the queue"); }
+        job.bytes = bytes; job.total = total; job.revision = job.revision.checked_add(1).context("Download revision overflow")?; job.updated_at_ms = timestamp_ms();
+        tx.execute("UPDATE records SET value=?1,updated=?2 WHERE kind='download_job' AND id=?3", params![serde_json::to_string(&job)?, timestamp(), id])?;
+        tx.commit()?;
+        Ok(job)
     }
 
     pub fn get_episode_payload(&self, episode_id: &str) -> Result<Option<String>> {
@@ -1486,6 +1991,7 @@ pub fn apply_settings_patch(
     }
 
     let updated: Settings = serde_json::from_value(current_json)?;
+    updated.validate()?;
     *settings = updated;
     Ok(())
 }

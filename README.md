@@ -6,7 +6,7 @@ A working early implementation using **Tauri 2, Svelte 5 and Rust**, with a Kotl
 
 ## Run locally
 
-Requirements: Node.js 22+, Rust, a Java 21 JDK with `jlink`, mpv, and the [Tauri Linux development libraries](https://v2.tauri.app/start/prerequisites/#linux). On Debian/Ubuntu, install the development dependencies listed there and `mpv openjdk-21-jdk`.
+Requirements: Node.js 22+, Rust, a Java 21 JDK with `jlink`, mpv, and the [Tauri Linux development libraries](https://v2.tauri.app/start/prerequisites/#linux). On Debian/Ubuntu, install the development dependencies listed there and `mpv openjdk-21-jdk`. Choosing a local subtitle uses the desktop file chooser portal, with Zenity as a fallback.
 
 ```sh
 npm ci
@@ -35,7 +35,7 @@ Choose **Add a repository** to use an existing Cloudstream repository manifest U
 - Provider homepage, paginated search, title details, episodes, stream resolution and subtitle metadata.
 - Replacement load failure restores the previous installed package; old package files remain cached.
 - Worker health handshake, hard deadlines, restart and extension restoration after worker exit.
-- mpv playback, HTTP headers and referer, pause, seek, stop, local bookmarks and periodically saved watch progress.
+- mpv playback, HTTP headers and referer, pause, seek, stop, local bookmarks and periodically saved watch progress. The player can add local SRT, VTT, ASS, SSA, TTML, DFXP and SAMI subtitles, including a selected subtitle inside a ZIP archive, without changing the original file.
 - A bundled sample extension using official Blender open-movie trailers. The sample is explicit and opt-in.
 - SQLite persistence and a CLI for testing the runtime without the desktop interface.
 
@@ -44,11 +44,10 @@ Choose **Add a repository** to use an existing Cloudstream repository manifest U
 - **Full Android runtime support**, Waydroid integration and Android settings/resources compatibility. Data-only `.cs3` execution is supported by the limited desktop bridge.
 - A working JVM WebView resolver. Upstream marks that implementation as unfinished; WebView-dependent providers are not supported by this build.
 - Broad compatibility certification against third-party repositories and older API versions. BdixCircleftp version 27 was loaded from its original installed `.cs3` and returned 40 live search results during development. That does not establish universal extension compatibility.
-- Downloads, tracking-service integrations, Chromecast, torrents, DRM, multiple profiles and embedded video rendering.
-- Fine-grained cancellation and streaming link events; worker calls are currently sequential.
-- Credential/session-aware media relay, subtitle-specific request headers and separate audio-track handoff. Header-free subtitles can be passed to mpv. Stream headers are preserved, but providers that depend on an in-memory cookie jar rather than returned headers need further integration.
+- Downloads, tracking-service integrations, Chromecast, torrents, DRM and embedded video rendering.
+- Universal compatibility with session-aware providers. A loopback media relay carries provider cookies, interceptors and resource-specific headers for tested playback paths; live third-party providers and all manifest formats have not been certified.
 - Per-extension process sandboxing. The Java worker is a separate process with a memory limit, and runs downloaded code with the user's permissions. Install extensions from trusted sources.
-- Automatic application updates, deep-link OS registration and repository short codes.
+- Automatic application updates and deep-link OS registration.
 
 ## Validation
 

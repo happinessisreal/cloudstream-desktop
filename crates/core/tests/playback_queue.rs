@@ -208,3 +208,28 @@ async fn auto_next_only_on_eof_and_profile_isolation() {
     app.switch_profile(&new_prof.id, None).await.unwrap();
     assert!(app.player.queue().await.is_none());
 }
+
+#[tokio::test]
+async fn excluded_next_episode_does_not_advance_queue_or_start_hidden_stream() {
+    let dir = tempfile::tempdir().unwrap();
+    let resources = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/resources");
+    let app = App::open(dir.path().join("data"), resources.clone()).unwrap();
+    app.install_local(&resources.join("worker/desktop-sample.jar")).await.unwrap();
+    let provider = app.providers().await.unwrap().into_iter().next().unwrap();
+    let (mut queue, _, _) = make_sample_queue(0);
+    queue.media.provider_id = provider.id;
+    queue.episodes[1].data = "https://download.blender.org/peach/trailer/trailer_480p.mov".into();
+    app.player.set_queue(Some(queue)).await;
+    app.store.update_settings(serde_json::json!({"sourcePriority": {
+        "activeProfileId":"default", "profiles":[{"id":"default", "name":"Default",
+        "hideNegativeSources":true, "qualityPriorities":{"480":-100}}]
+    }}), Some("profile"), Some("default")).unwrap();
+    let mut events = app.player.subscribe();
+    assert!(!app.advance_queue_and_play(true).await.unwrap());
+    assert_eq!(app.player.queue().await.unwrap().current_index, 0);
+    assert!(!app.player.state().await.active);
+    let error = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop { if let Ok(PlayerEvent::Error { message, .. }) = events.recv().await { break message; } }
+    }).await.unwrap();
+    assert!(error.contains("source preferences"), "{error}");
+}

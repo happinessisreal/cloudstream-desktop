@@ -3,6 +3,7 @@ package dev.cloudstream.worker.transport
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkPlayList
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
@@ -34,7 +35,8 @@ data class ResourceDescriptor(
     val extractorData: String?,
     val streamType: String,
     val allowedOrigins: Set<String>,
-    val interceptor: Interceptor?
+    val interceptor: Interceptor?,
+    val playlistUrls: List<String> = emptyList()
 )
 
 class MediaSession(
@@ -92,6 +94,13 @@ object MediaTransportService {
             URI(api.mainUrl).host?.let { allowed.add(it.lowercase()) }
         } catch (_: Exception) {}
 
+        val playlistUrls = (link as? ExtractorLinkPlayList)?.playlist?.map { it.url } ?: emptyList()
+        playlistUrls.forEach { url ->
+            val uri = URI(url)
+            require(uri.scheme in listOf("http", "https") && uri.host != null) { "Playlist segment must be an HTTP(S) URL" }
+            allowed.add(uri.host.lowercase())
+        }
+
         val interceptor = try {
             api.getVideoInterceptor(link)
         } catch (_: Exception) {
@@ -107,7 +116,8 @@ object MediaTransportService {
             extractorData = link.extractorData,
             streamType = link.type.name,
             allowedOrigins = allowed,
-            interceptor = interceptor
+            interceptor = interceptor,
+            playlistUrls = playlistUrls
         )
         resources[id] = desc
         return id
@@ -172,9 +182,11 @@ object MediaTransportService {
         val session = MediaSession(token, res, verifierJob)
         sessions[token] = session
 
+        val transportUrl = "http://127.0.0.1:$port/media/$token/$resourceId"
         return mapOf(
             "sessionToken" to token,
-            "transportUrl" to "http://127.0.0.1:$port/media/$token/$resourceId",
+            "transportUrl" to transportUrl,
+            "playlistUrls" to res.playlistUrls.map { "$transportUrl?subpath=${URLEncoder.encode(it, "UTF-8")}" },
             "port" to port
         )
     }
@@ -236,7 +248,7 @@ object MediaHttpHandler : HttpHandler {
             return
         }
 
-        val query = exchange.requestURI.query
+        val query = exchange.requestURI.rawQuery
         var targetUrl = session.resource.upstreamUrl
         if (!query.isNullOrEmpty()) {
             val queryParams = query.split('&').associate {
@@ -289,7 +301,7 @@ object MediaHttpHandler : HttpHandler {
             }
 
             session.resource.headers.forEach { (k, v) ->
-                if (!k.equals("Range", ignoreCase = true) && !k.equals("Host", ignoreCase = true)) {
+                if (!k.equals("Range", ignoreCase = true) && !k.equals("If-Range", ignoreCase = true) && !k.equals("Host", ignoreCase = true)) {
                     reqBuilder.header(k, v)
                 }
             }
@@ -300,6 +312,11 @@ object MediaHttpHandler : HttpHandler {
             val rangeHeader = exchange.requestHeaders.getFirst("Range")
             if (!rangeHeader.isNullOrEmpty()) {
                 reqBuilder.header("Range", rangeHeader)
+                exchange.requestHeaders.getFirst("If-Range")?.takeIf { it.isNotBlank() }?.let { reqBuilder.header("If-Range", it) }
+            }
+            // Range offsets must refer to the exact bytes the downloader writes.
+            if (exchange.requestHeaders.getFirst("Accept-Encoding")?.equals("identity", ignoreCase = true) == true) {
+                reqBuilder.header("Accept-Encoding", "identity")
             }
 
             val call = client.newCall(reqBuilder.build())
@@ -349,6 +366,14 @@ object MediaHttpHandler : HttpHandler {
             val isHls = currentUrl.contains(".m3u8", ignoreCase = true) ||
                     contentType.contains("mpegurl") ||
                     contentType.contains("application/x-mpegurl")
+
+            // Rewritten HLS manifests are a different representation; upstream validators do
+            // not apply to their bytes. Direct-file downloads need the original validators.
+            if (!isHls) {
+                listOf("ETag", "Last-Modified", "Date", "Content-Encoding").forEach { name ->
+                    response.header(name)?.let { responseHeaders.set(name, it) }
+                }
+            }
 
             if (method == "HEAD") {
                 val len = response.body?.contentLength() ?: -1L
@@ -414,9 +439,10 @@ object MediaHttpHandler : HttpHandler {
             val trimmed = line.trim()
             if (trimmed.isEmpty()) {
                 line
-            } else if (trimmed.startsWith("#EXT-X-KEY:", ignoreCase = true)) {
-                // Example: #EXT-X-KEY:METHOD=AES-128,URI="https://example.com/key.bin",IV=...
-                val uriRegex = Regex("""URI="([^"]+)"""")
+            } else if (trimmed.startsWith("#EXT-X-", ignoreCase = true)) {
+                // Rendition playlists and initialisation maps need the same provider headers as
+                // keys and segments. Match the URI attribute itself, not names like SERVER-URI.
+                val uriRegex = Regex("""(?i)(?<![A-Z0-9-])URI="([^"]+)"""")
                 uriRegex.replace(line) { match ->
                     val originalUri = match.groupValues[1]
                     val resolved = if (baseUri != null) {

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Categories={{categories}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}} %U
+Icon={{icon}}
+Name={{name}}
+Terminal=false
+Type=Application
+StartupWMClass={{exec}}
+MimeType=x-scheme-handler/cloudstreamrepo;x-scheme-handler/cloudstreamsearch;x-scheme-handler/cloudstreamplayer;x-scheme-handler/cloudstreamcontinuewatching;x-scheme-handler/csshare;video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;video/ogg;audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;

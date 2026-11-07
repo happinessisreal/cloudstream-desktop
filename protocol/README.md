@@ -61,7 +61,7 @@ Failure:
 | `load` | `providerId`, provider-owned `url` | Enriched details (syncData, trailers, actors, recommendations, dubGroups, seasons, uniqueUrl, backgroundPosterUrl, logoUrl, contentRating) |
 | `loadLinks` | `providerId`, opaque episode `data` | Discriminated streams (direct, HLS, DASH, playlist, torrent, DRM) and subtitles; streams incremental progress events |
 | `cancel` | `id` (target request ID) | `{ "cancelled": boolean, "targetId": string }` |
-| `createMediaSession` | `resourceHandle` | `{ "sessionToken": string, "transportUrl": string, "port": number }` |
+| `createMediaSession` | `resourceHandle` | `{ "sessionToken": string, "transportUrl": string, "playlistUrls": string[], "port": number }` |
 | `closeMediaSession` | `sessionToken` | `boolean` (closes session and cancels background verifier job) |
 | `getWebViewStatus` | None | `{ "supported": boolean, "reason": string, "missingFeatures": string[] }` |
 
@@ -154,17 +154,17 @@ When all links and subtitles are extracted, the worker sends the final single re
 - `audioTracks`: separate audio file resources with headers
 - `extractorData`: opaque string preserved byte-for-byte for verifier/interceptor jobs
 - `resourceHandle`: opaque session-independent identifier for media streams that require provider OkHttp cookies or interceptors.
-- Subtitles include `lang`, `url`, `headers`, and `langTag` (ISO language tag)
+- Subtitles include `lang`, `url`, `headers`, `langTag` (ISO language tag), and an optional `resourceHandle`. Separate audio tracks may also have a `resourceHandle`; each represents its own headers and request context.
 
 ### Session-Aware Media Transport
 When playback starts for a stream with a `resourceHandle`:
-- Rust requests `createMediaSession` with the `resourceHandle`.
+- Rust requests `createMediaSession` with the `resourceHandle`. For a multi-segment playlist, `playlistUrls` contains a session-scoped URL for every segment, in order. The client must reject a missing or mismatched list rather than bypass the provider session.
 - The JVM worker generates an unpredictable 32-character hex session token and binds a loopback HTTP transport server (`127.0.0.1:0`).
 - The player connects only to `http://127.0.0.1:<port>/media/<sessionToken>/<resourceHandle>`. No credentials or cookies leak into process command-lines (`argv`) or player diagnostic logs.
 - The transport proxies requests through provider-configured OkHttp interceptors (`getVideoInterceptor`) and maintains the provider cookie jar.
-- Nested HLS/DASH manifest URIs and encryption keys (`#EXT-X-KEY`) are rewritten on-the-fly to route through the loopback transport.
+- Nested HLS manifest URIs and encryption keys (`#EXT-X-KEY`) are rewritten on-the-fly to route through the loopback transport.
 - Upstream redirects are checked against allowed provider origins; redirects to unrelated origins fail closed with HTTP 502. Requests with invalid or expired session tokens fail closed with HTTP 403.
-- Any background `extractorVerifierJob` associated with the stream starts upon session creation and is cancelled when `closeMediaSession` is called on playback stop or EOF.
+- Playback creates and closes separate sessions for the main stream, its audio tracks, and its subtitles. Each session applies its own headers; provider video interceptors also apply to separate audio. Any background `extractorVerifierJob` associated with the stream starts upon session creation and is cancelled when `closeMediaSession` is called on playback stop or EOF.
 - Ordinary streams without a `resourceHandle` bypass the loopback transport and stream directly with custom HTTP headers.
 
 ### WebView Integration Boundary

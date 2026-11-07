@@ -2,6 +2,22 @@ use cloudstream_core::{models::*, App};
 use std::path::PathBuf;
 
 #[tokio::test]
+async fn provider_session_failure_does_not_fall_back_to_direct_url() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = App::open(dir.path().join("data"), dir.path().join("missing-resources")).unwrap();
+    let stream = Stream {
+        name: "Protected stream".into(),
+        url: "https://example.com/video.mp4".into(),
+        resource_handle: Some("expired-handle".into()),
+        ..Default::default()
+    };
+    let error = app.play(stream, vec![], None, None, 0.0, Some("default"), None).await.unwrap_err();
+    assert!(error.to_string().contains("provider's media session"), "{error:#}");
+    assert!(app.active_transport_token.lock().await.is_none());
+    assert!(!app.player.state().await.active);
+}
+
+#[tokio::test]
 async fn webview_unsupported_structured_report() {
     let dir = tempfile::tempdir().unwrap();
     let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/resources");
@@ -154,7 +170,32 @@ async fn verifier_starts_and_stops_with_playback_lifecycle() {
         guard.take()
     };
     if let Some(tok) = old_tok {
-        let closed = app.worker.close_media_session(&installed, &tok).await.unwrap();
-        assert!(closed, "Media session must be closed on stop");
+        for token in tok.tokens {
+            let _ = app.worker.close_media_session(&installed, &token).await.unwrap();
+        }
     }
+}
+
+#[tokio::test]
+async fn stale_player_cleanup_does_not_close_replacement_transport() {
+    let dir = tempfile::tempdir().unwrap();
+    let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src-tauri/resources");
+    let app = App::open(dir.path().join("data"), resources.clone()).unwrap();
+    app.install_local(&resources.join("worker/desktop-sample.jar")).await.unwrap();
+    let installed = app.store.installed().unwrap();
+    let provider = app.providers().await.unwrap().into_iter().next().unwrap();
+    let links: ResolvedLinks = serde_json::from_value(app.worker.request(&installed, "loadLinks", serde_json::json!({
+        "providerId": provider.id,
+        "data": "https://download.blender.org/peach/trailer/trailer_480p.mov"
+    })).await.unwrap()).unwrap();
+    let session = app.worker.create_media_session(&installed, links.streams[0].resource_handle.as_ref().unwrap()).await.unwrap();
+    *app.active_transport_token.lock().await = Some(cloudstream_core::ActiveTransport {
+        tokens: vec![session.session_token.clone()], player_session_id: "new-player".into(),
+    });
+    app.close_transport_for("old-player").await;
+    assert_eq!(app.active_transport_token.lock().await.as_ref().unwrap().tokens, vec![session.session_token.clone()]);
+    app.close_transport_for("new-player").await;
+    assert!(app.active_transport_token.lock().await.is_none());
+    let response = reqwest::get(&session.transport_url).await.unwrap();
+    assert_eq!(response.status().as_u16(), 403);
 }

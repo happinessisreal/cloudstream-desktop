@@ -9,9 +9,11 @@ default-run = "cloudstream-desktop"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+anyhow = "1"
 tauri = { version = "2", features = [] }
 cloudstream-core = { path = "../crates/core" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 
+rfd = { version = "0.16", default-features = false, features = ["xdg-portal", "tokio"] }

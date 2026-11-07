@@ -45,8 +45,10 @@
     "linux": {
       "deb": {
         "depends": [
-          "mpv"
-        ]
+          "mpv",
+          "libnotify-bin"
+        ],
+        "desktopTemplate": "linux/cloudstream-desktop.desktop"
       }
     }
   }
