@@ -16,8 +16,8 @@
     if (!trimmed.includes('://')) {
       trimmed = `udp://${trimmed}`;
     }
-    // Remove trailing slashes for canonical comparison
-    return trimmed.replace(/\/+$/, '');
+    // Remove trailing slashes and lowercase for canonical comparison
+    return trimmed.toLowerCase().replace(/\/+$/, '');
   }
 
   function parseUniqueTrackers(text: string): { unique: string[]; duplicatesCount: number } {

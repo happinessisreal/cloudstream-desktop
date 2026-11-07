@@ -188,6 +188,7 @@ impl App {
             worker: Worker::new(WorkerConfig {
                 java,
                 jar: resources.join("worker/worker.jar"),
+                data_dir: Some(data.clone()),
             }),
             player,
             resources,
@@ -1109,8 +1110,8 @@ impl App {
                 continue;
             }
             let canonical = clean.to_lowercase();
-            if seen.insert(canonical) {
-                unique.push(clean.to_string());
+            if seen.insert(canonical.clone()) {
+                unique.push(canonical);
             }
         }
         std::fs::write(path, unique.join("\n"))?;

@@ -16,10 +16,11 @@ use tokio::{
     sync::{mpsc, oneshot, Mutex, Semaphore},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WorkerConfig {
     pub java: PathBuf,
     pub jar: PathBuf,
+    pub data_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -77,13 +78,18 @@ impl Worker {
         if !self.config.jar.is_file() {
             bail!("Extension worker is missing. Run npm run worker:build")
         }
-        let mut child = Command::new(&self.config.java)
-            .args(["-Xmx512m", "-Djava.awt.headless=true", "-jar"])
+        let mut cmd = Command::new(&self.config.java);
+        cmd.args(["-Xmx512m", "-Djava.awt.headless=true", "-jar"])
             .arg(&self.config.jar)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .kill_on_drop(true)
+            .kill_on_drop(true);
+        if let Some(ref data) = self.config.data_dir {
+            cmd.env("CLOUDSTREAM_DATA_DIR", data);
+            cmd.env("CLOUDSTREAM_TRACKERS_FILE", data.join("trackers.txt"));
+        }
+        let mut child = cmd
             .spawn()
             .context("Could not start Java. Build the bundled runtime or install Java 21+")?;
 

@@ -73,6 +73,7 @@ for line in sys.stdin:
     let worker = Worker::new(WorkerConfig {
         java: wrapper_path,
         jar,
+        data_dir: None,
     });
 
     let installed: Vec<InstalledPlugin> = vec![];
@@ -141,6 +142,7 @@ for line in sys.stdin:
     let worker = Arc::new(Worker::new(WorkerConfig {
         java: wrapper_path,
         jar,
+        data_dir: None,
     }));
 
     let installed: Vec<InstalledPlugin> = vec![];
@@ -231,6 +233,7 @@ for line in sys.stdin:
     let worker = Worker::new(WorkerConfig {
         java: wrapper_path,
         jar,
+        data_dir: None,
     });
 
     let installed: Vec<InstalledPlugin> = vec![];
@@ -300,6 +303,7 @@ for line in sys.stdin:
     let worker = Worker::new(WorkerConfig {
         java: wrapper_path,
         jar,
+        data_dir: None,
     });
 
     let installed: Vec<InstalledPlugin> = vec![];
@@ -355,6 +359,7 @@ for line in sys.stdin:
     let worker = Worker::new(WorkerConfig {
         java: wrapper_path,
         jar,
+        data_dir: None,
     });
 
     let (prog_tx, mut prog_rx) = mpsc::unbounded_channel();
