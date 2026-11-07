@@ -1360,6 +1360,15 @@
       message('Blender Open Movies is ready to browse.');
     });
   }
+  async function addTorrentio() {
+    await task('torrentio', async () => {
+      await call('install_torrentio');
+      await refresh();
+      page = 'discover';
+      await chooseProvider('bundled:Torrentio');
+      message('Torrentio is installed and ready.');
+    });
+  }
   async function addRepository(event: SubmitEvent) {
     event.preventDefault();
     await task('repository', async () => {
@@ -3590,6 +3599,10 @@
                 >{#if busy === 'sample'}<LoaderCircle class="spin" size={18} />{:else}<Play
                     size={18}
                   />{/if}Try an open movie</button
+              ><button class="button secondary" disabled={!!busy} onclick={addTorrentio}
+                >{#if busy === 'torrentio'}<LoaderCircle class="spin" size={18} />{:else}<Sparkles
+                    size={18}
+                  />{/if}Install Torrentio</button
               >
             </div>
             <span class="welcome-footnote"
@@ -3852,12 +3865,21 @@
                       <button class="button secondary small" onclick={() => (modal = 'clearHistory')}>Clear all</button>
                     </div>
                   </div>
-                  <div class="media-rail">
+                  <div class="media-rail horizontal">
                     {#each snapshot.history as watch}
-                      <div class="history-card-wrapper" style="flex: 0 0 240px; width: 240px;">
+                      <div class="history-card-wrapper" style="flex: 0 0 280px; width: 280px;">
                         <button class="history-card" onclick={() => resume(watch)}>
-                          <span class="history-play"><Play fill="currentColor" size={20} /></span>
-                          <div>
+                          {#if watch.item.posterUrl}
+                            <div class="history-thumb">
+                              <img src={watch.item.posterUrl} alt="" loading="lazy" />
+                              <span class="history-play-overlay"><Play fill="currentColor" size={24} /></span>
+                            </div>
+                          {:else}
+                            <div class="history-thumb history-placeholder">
+                              <span class="history-play"><Play fill="currentColor" size={20} /></span>
+                            </div>
+                          {/if}
+                          <div class="history-info">
                             <strong>{watch.item.name}</strong>
                             <span>{formatTime(watch.position)}{watch.duration ? ` / ${formatTime(watch.duration)}` : ''}</span>
                             <div class="progress-track">
@@ -3865,7 +3887,7 @@
                             </div>
                           </div>
                         </button>
-                        <button class="history-remove-btn" title="Remove" onclick={() => removeHistoryItem(watch.id)}>
+                        <button class="history-remove-btn" title="Remove" aria-label={`Remove ${watch.item.name} from history`} onclick={() => removeHistoryItem(watch.id)}>
                           <X size={14} />
                         </button>
                       </div>
@@ -4895,6 +4917,9 @@
           </p>
           <button class="button secondary" disabled={!!busy} onclick={addSample}
             ><Play size={16} />Install open movie sample</button
+          >
+          <button class="button secondary" disabled={!!busy} onclick={addTorrentio} style="margin-inline-start: 10px;"
+            ><Sparkles size={16} />Install Torrentio (P2P)</button
           >
         </section>
         </div>

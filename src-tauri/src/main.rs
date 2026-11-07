@@ -138,6 +138,10 @@ async fn install_sample(app: State<'_, Backend>) -> Reply<InstalledPlugin> {
     app.install_sample().await.map_err(error)
 }
 #[tauri::command]
+async fn install_torrentio(app: State<'_, Backend>) -> Reply<InstalledPlugin> {
+    app.install_torrentio().await.map_err(error)
+}
+#[tauri::command]
 async fn check_for_updates(app: State<'_, Backend>) -> Reply<Vec<ExtensionUpdate>> {
     app.check_for_updates().await.map_err(error)
 }
@@ -1158,6 +1162,7 @@ fn main() {
             install_extension,
             install_local_extension,
             install_sample,
+            install_torrentio,
             remove_extension,
             check_for_updates,
             update_extension,

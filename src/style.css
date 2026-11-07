@@ -1363,13 +1363,74 @@ main {
 }
 .history-card {
   display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 20px;
+  flex-direction: column;
+  padding: 0;
   border: 1px solid var(--border);
-  background: #1d1d23;
-  border-radius: 11px;
+  background: #181920;
+  border-radius: 12px;
   text-align: start;
+  overflow: hidden;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  cursor: pointer;
+  width: 100%;
+}
+.history-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.history-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #121318;
+  overflow: hidden;
+}
+.history-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+.history-card:hover .history-thumb img {
+  transform: scale(1.05);
+}
+.history-thumb.history-placeholder {
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at center, #242636, #14151c);
+}
+.history-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  color: white;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.history-card:hover .history-play-overlay {
+  opacity: 1;
+}
+.history-info {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.history-card strong {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-card .history-info > span {
+  display: block;
+  font-size: 11px;
+  color: var(--subtle);
 }
 .history-play {
   display: inline-grid;
@@ -1381,31 +1442,31 @@ main {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.history-card > div {
-  min-width: 0;
-  flex: 1;
-}
-.history-card strong {
-  font-size: 13px;
-  font-weight: 500;
-}
-.history-card > div > span {
-  display: block;
-  font-size: 11px;
-  color: var(--subtle);
-  margin-top: 5px;
-}
 .progress-track {
   height: 3px;
   background: #3c3e54;
   border-radius: 3px;
   overflow: hidden;
-  margin-top: 14px;
+  margin-top: 8px;
 }
 .progress-track i {
   display: block;
   height: 100%;
   background: #9ba8ff;
+}
+.score-badge {
+  color: #ffd166 !important;
+  font-weight: 600;
+}
+.hero-play {
+  background: #6366f1 !important;
+  color: white !important;
+  border-color: #7356bf !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+}
+.hero-play:hover {
+  background: #4f46e5 !important;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
 }
 .extension-tabs {
   display: flex;

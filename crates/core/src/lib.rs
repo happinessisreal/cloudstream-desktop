@@ -1047,6 +1047,45 @@ impl App {
         self.activate(&plugin).await?;
         Ok(plugin)
     }
+    pub async fn install_torrentio(&self) -> Result<InstalledPlugin> {
+        let _guard = self.mutation.lock().await;
+        let bytes = std::fs::read(self.resources.join("worker/torrentio.jar"))
+            .context("Torrentio extension is missing. Run npm run worker:build")?;
+        let hash = format!("sha256-{}", digest(&bytes));
+        let entry = PluginEntry {
+            url: "https://torrentio.strem.fun".into(),
+            name: "Torrentio".into(),
+            internal_name: "torrentio".into(),
+            version: 1,
+            status: 1,
+            api_version: 1,
+            authors: vec!["Torrentio".into()],
+            description: Some(
+                "Torrent and magnet stream resolver for Cloudstream Desktop."
+                    .into(),
+            ),
+            language: Some("en".into()),
+            icon_url: None,
+            repository_url: None,
+            tv_types: Some(vec!["Movie".into(), "TvSeries".into()]),
+            file_size: None,
+            file_hash: None,
+            jar_url: Some("bundled://torrentio.jar".into()),
+            jar_hash: Some(hash.clone()),
+            jar_file_size: Some(bytes.len() as u64),
+            source_url: None,
+            extra: std::collections::BTreeMap::new(),
+        };
+        let plugin = self.repositories.prepare_bytes(
+            "bundled://samples",
+            entry,
+            &bytes,
+            Some(&hash),
+            RuntimeKind::Jvm,
+        )?;
+        self.activate(&plugin).await?;
+        Ok(plugin)
+    }
     pub async fn remove_plugin(&self, id: &str) -> Result<()> {
         let _guard = self.mutation.lock().await;
         if !self.store.installed()?.iter().any(|p| p.id == id) {

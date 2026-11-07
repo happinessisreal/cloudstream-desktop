@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Info, Plus, Check, ChevronLeft, ChevronRight, Cloud } from 'lucide-svelte';
+  import { Info, Plus, Check, ChevronLeft, ChevronRight, Cloud, Play } from 'lucide-svelte';
   import type { MediaItem } from './types';
   let {
     item,
@@ -60,7 +60,7 @@
     <div class="spotlight-meta">
       <span>{item.mediaType?.replace('TvSeries', 'TV series') ?? 'Video'}</span>{#if item.year}<span
           >{item.year}</span
-        >{/if}{#if score !== undefined && score > 0}<span>★ {score.toFixed(1)}</span>{/if}<span>{source}</span>
+        >{/if}{#if score !== undefined && score > 0}<span class="score-badge">★ {score.toFixed(1)}</span>{/if}<span>{source}</span>
     </div>
     {#if tags && tags.length > 0}
       <div class="spotlight-tags">
@@ -73,7 +73,10 @@
       <p class="spotlight-plot">{plot}</p>
     {/if}
     <div class="button-row">
-      <button class="button primary" disabled={busy} onclick={ondetails}
+      <button class="button primary hero-play" disabled={busy} onclick={ondetails}
+        ><Play size={19} fill="currentColor" />Watch Now</button
+      >
+      <button class="button hero-secondary" disabled={busy} onclick={ondetails}
         ><Info size={19} />More info</button
       >
       <button class="button hero-secondary" disabled={busy} onclick={onsave}
