@@ -1086,6 +1086,30 @@ impl App {
         self.activate(&plugin).await?;
         Ok(plugin)
     }
+    pub fn get_custom_trackers(&self) -> Result<Vec<String>> {
+        let path = self.data.join("trackers.txt");
+        if !path.is_file() {
+            return Ok(Vec::new());
+        }
+        let content = std::fs::read_to_string(path)?;
+        let trackers = content
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        Ok(trackers)
+    }
+    pub fn save_custom_trackers(&self, trackers: &[String]) -> Result<()> {
+        let path = self.data.join("trackers.txt");
+        let content = trackers
+            .iter()
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(path, content)?;
+        Ok(())
+    }
     pub async fn remove_plugin(&self, id: &str) -> Result<()> {
         let _guard = self.mutation.lock().await;
         if !self.store.installed()?.iter().any(|p| p.id == id) {

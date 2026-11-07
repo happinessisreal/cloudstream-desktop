@@ -41,6 +41,42 @@ class Torrentio : MainAPI() {
         "udp://explodie.org:6969/announce"
     )
 
+    fun getEffectiveTrackers(): List<String> {
+        val trackers = LinkedHashSet<String>()
+        // 1. Add default high-speed public trackers
+        trackers.addAll(defaultTrackers)
+
+        // 2. Read custom trackers from user file if present
+        val searchLocations = listOfNotNull(
+            System.getenv("CLOUDSTREAM_TRACKERS_FILE")?.let { java.io.File(it) },
+            System.getenv("CLOUDSTREAM_DATA_DIR")?.let { java.io.File(it, "trackers.txt") },
+            java.io.File(System.getProperty("user.home"), ".local/share/dev.cloudstream.desktop/trackers.txt"),
+            java.io.File(System.getProperty("user.home"), ".config/dev.cloudstream.desktop/trackers.txt")
+        )
+
+        for (file in searchLocations) {
+            try {
+                if (file.isFile && file.canRead()) {
+                    file.readLines()
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() && !it.startsWith("#") }
+                        .forEach { trackers.add(it) }
+                    break
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Read inline environment variable if set
+        System.getenv("TORRENTIO_TRACKERS")?.let { env ->
+            env.split(',', '\n', ' ')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("#") }
+                .forEach { trackers.add(it) }
+        }
+
+        return trackers.toList()
+    }
+
     private val catalog = listOf(
         TorrentMedia(
             name = "Big Buck Bunny",
@@ -219,9 +255,10 @@ class Torrentio : MainAPI() {
         val media = catalog.firstOrNull { it.url == data || it.imdbId == data.substringAfterLast("/") }
             ?: catalog.first()
 
+        val trackers = getEffectiveTrackers()
         for (stream in media.streams) {
-            // Build trackers string for standard BitTorrent magnet URIs
-            val trackerQuery = defaultTrackers.joinToString("") { "&tr=" + java.net.URLEncoder.encode(it, "UTF-8") }
+            // Build trackers string for standard BitTorrent magnet URIs with default and custom user trackers
+            val trackerQuery = trackers.joinToString("") { "&tr=" + java.net.URLEncoder.encode(it, "UTF-8") }
             val cleanTitle = java.net.URLEncoder.encode(stream.title, "UTF-8")
             val magnetUri = "magnet:?xt=urn:btih:${stream.infoHash}&dn=$cleanTitle$trackerQuery"
 

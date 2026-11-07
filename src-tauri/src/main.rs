@@ -142,6 +142,14 @@ async fn install_torrentio(app: State<'_, Backend>) -> Reply<InstalledPlugin> {
     app.install_torrentio().await.map_err(error)
 }
 #[tauri::command]
+async fn get_custom_trackers(app: State<'_, Backend>) -> Reply<Vec<String>> {
+    app.get_custom_trackers().map_err(error)
+}
+#[tauri::command]
+async fn save_custom_trackers(app: State<'_, Backend>, trackers: Vec<String>) -> Reply<()> {
+    app.save_custom_trackers(&trackers).map_err(error)
+}
+#[tauri::command]
 async fn check_for_updates(app: State<'_, Backend>) -> Reply<Vec<ExtensionUpdate>> {
     app.check_for_updates().await.map_err(error)
 }
@@ -1163,6 +1171,8 @@ fn main() {
             install_local_extension,
             install_sample,
             install_torrentio,
+            get_custom_trackers,
+            save_custom_trackers,
             remove_extension,
             check_for_updates,
             update_extension,

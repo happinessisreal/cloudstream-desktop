@@ -83,6 +83,7 @@
   import Diagnostics from './lib/Diagnostics.svelte';
   import EntryPrompt from './lib/EntryPrompt.svelte';
   import ExternalPlayerSettings from './lib/ExternalPlayerSettings.svelte';
+  import TrackerSettings from './lib/TrackerSettings.svelte';
   import type {
     Snapshot,
     Provider,
@@ -4836,6 +4837,7 @@
         <MetadataSettings onchange={() => void refresh()} />
         {#key activeProfile}<SubtitleServicesSettings profileId={activeProfile} />{/key}
         <ExternalPlayerSettings onchange={(value) => (externalPlayer = value)} />
+        <TrackerSettings />
         <Backup profileId={activeProfile} onapplied={() => void refresh()} />
         <Diagnostics />
         <section class="settings-panel">
