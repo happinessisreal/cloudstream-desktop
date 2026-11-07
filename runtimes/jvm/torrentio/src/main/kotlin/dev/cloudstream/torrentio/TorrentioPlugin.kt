@@ -42,11 +42,20 @@ class Torrentio : MainAPI() {
     )
 
     fun getEffectiveTrackers(): List<String> {
-        val trackers = LinkedHashSet<String>()
-        // 1. Add default high-speed public trackers
-        trackers.addAll(defaultTrackers)
+        val canonicalSeen = HashSet<String>()
+        val result = mutableListOf<String>()
 
-        // 2. Read custom trackers from user file if present
+        fun addIfNew(tracker: String) {
+            val clean = tracker.trim()
+            if (clean.isEmpty() || clean.startsWith("#")) return
+            // Canonical normalization (case-insensitive, strip trailing slash) prevents duplicates
+            val canonical = clean.lowercase().removeSuffix("/")
+            if (canonicalSeen.add(canonical)) {
+                result.add(clean.removeSuffix("/"))
+            }
+        }
+
+        // 1. Read custom trackers from user file first
         val searchLocations = listOfNotNull(
             System.getenv("CLOUDSTREAM_TRACKERS_FILE")?.let { java.io.File(it) },
             System.getenv("CLOUDSTREAM_DATA_DIR")?.let { java.io.File(it, "trackers.txt") },
@@ -57,24 +66,21 @@ class Torrentio : MainAPI() {
         for (file in searchLocations) {
             try {
                 if (file.isFile && file.canRead()) {
-                    file.readLines()
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() && !it.startsWith("#") }
-                        .forEach { trackers.add(it) }
+                    file.readLines().forEach { addIfNew(it) }
                     break
                 }
             } catch (_: Exception) {}
         }
 
-        // 3. Read inline environment variable if set
+        // 2. Read inline environment variable if set
         System.getenv("TORRENTIO_TRACKERS")?.let { env ->
-            env.split(',', '\n', ' ')
-                .map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("#") }
-                .forEach { trackers.add(it) }
+            env.split(',', '\n', ' ').forEach { addIfNew(it) }
         }
 
-        return trackers.toList()
+        // 3. Add default trackers only if not already added by the user
+        defaultTrackers.forEach { addIfNew(it) }
+
+        return result
     }
 
     private val catalog = listOf(

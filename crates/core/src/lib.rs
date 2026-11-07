@@ -1101,13 +1101,19 @@ impl App {
     }
     pub fn save_custom_trackers(&self, trackers: &[String]) -> Result<()> {
         let path = self.data.join("trackers.txt");
-        let content = trackers
-            .iter()
-            .map(|t| t.trim())
-            .filter(|t| !t.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        std::fs::write(path, content)?;
+        let mut seen = std::collections::HashSet::new();
+        let mut unique = Vec::new();
+        for t in trackers {
+            let clean = t.trim().trim_end_matches('/');
+            if clean.is_empty() || clean.starts_with('#') {
+                continue;
+            }
+            let canonical = clean.to_lowercase();
+            if seen.insert(canonical) {
+                unique.push(clean.to_string());
+            }
+        }
+        std::fs::write(path, unique.join("\n"))?;
         Ok(())
     }
     pub async fn remove_plugin(&self, id: &str) -> Result<()> {

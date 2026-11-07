@@ -1,39 +1,51 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Radio, RefreshCw, Check, AlertCircle, Sparkles, Trash2 } from 'lucide-svelte';
+  import { Radio, RefreshCw, Check, AlertCircle, Upload, Trash2, ShieldCheck } from 'lucide-svelte';
   import { call, toErrorMessage } from './api';
-
-  const RECOMMENDED_TRACKERS = [
-    'udp://tracker.opentrackr.org:1337/announce',
-    'udp://open.demonii.com:1337/announce',
-    'udp://open.stealth.si:80/announce',
-    'udp://tracker.torrent.eu.org:451/announce',
-    'udp://explodie.org:6969/announce',
-    'udp://tracker.coppersurfer.tk:6969/announce',
-    'udp://p4p.arenabg.com:1337/announce',
-    'udp://movies.zsw.ca:6969/announce',
-    'http://tracker.dler.org:6969/announce',
-    'udp://tracker.internetwarriors.net:1337/announce',
-    'udp://tracker.cyberia.is:6969/announce',
-    'udp://tracker.tiny-vps.com:6969/announce',
-  ];
 
   let trackersText = $state('');
   let saved = $state(false);
   let busy = $state(false);
   let error = $state('');
+  let infoMessage = $state('');
+  let fileInput: HTMLInputElement;
 
-  function parseTrackers(text: string): string[] {
-    return text
-      .split('\n')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0 && !t.startsWith('#'));
+  function normalizeTracker(url: string): string {
+    let trimmed = url.trim();
+    if (!trimmed || trimmed.startsWith('#')) return '';
+    if (!trimmed.includes('://')) {
+      trimmed = `udp://${trimmed}`;
+    }
+    // Remove trailing slashes for canonical comparison
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  function parseUniqueTrackers(text: string): { unique: string[]; duplicatesCount: number } {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    let duplicatesCount = 0;
+
+    // Split on newlines, commas, semicolons or double-spaces
+    const tokens = text.split(/[\r\n,;]+|\s{2,}/);
+    for (const raw of tokens) {
+      const clean = normalizeTracker(raw);
+      if (!clean) continue;
+      const canonical = clean.toLowerCase();
+      if (seen.has(canonical)) {
+        duplicatesCount++;
+      } else {
+        seen.add(canonical);
+        result.push(clean);
+      }
+    }
+    return { unique: result, duplicatesCount };
   }
 
   onMount(async () => {
     try {
       const list = await call<string[]>('get_custom_trackers');
-      trackersText = (list || []).join('\n');
+      const { unique } = parseUniqueTrackers((list || []).join('\n'));
+      trackersText = unique.join('\n');
     } catch (e) {
       error = toErrorMessage(e);
     }
@@ -42,12 +54,16 @@
   async function save() {
     busy = true;
     error = '';
+    infoMessage = '';
     saved = false;
-    const trackers = parseTrackers(trackersText);
+    const { unique, duplicatesCount } = parseUniqueTrackers(trackersText);
     try {
-      await call('save_custom_trackers', { trackers });
-      trackersText = trackers.join('\n');
+      await call('save_custom_trackers', { trackers: unique });
+      trackersText = unique.join('\n');
       saved = true;
+      if (duplicatesCount > 0) {
+        infoMessage = `Saved ${unique.length} unique trackers (${duplicatesCount} duplicate${duplicatesCount === 1 ? '' : 's'} removed).`;
+      }
     } catch (e) {
       error = toErrorMessage(e, 'Could not save custom trackers');
     } finally {
@@ -55,40 +71,81 @@
     }
   }
 
-  function loadRecommended() {
-    const existing = new Set(parseTrackers(trackersText));
-    for (const t of RECOMMENDED_TRACKERS) {
-      existing.add(t);
+  async function handleFileUpload(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const existing = parseUniqueTrackers(trackersText).unique;
+      const parsedFromFile = parseUniqueTrackers(content);
+
+      const seen = new Set(existing.map((t) => t.toLowerCase()));
+      const added: string[] = [];
+      let duplicateMatches = parsedFromFile.duplicatesCount;
+
+      for (const t of parsedFromFile.unique) {
+        const canonical = t.toLowerCase();
+        if (seen.has(canonical)) {
+          duplicateMatches++;
+        } else {
+          seen.add(canonical);
+          added.push(t);
+        }
+      }
+
+      const merged = [...existing, ...added];
+      trackersText = merged.join('\n');
+      saved = false;
+      infoMessage = `Imported ${added.length} new tracker${added.length === 1 ? '' : 's'} from ${file.name}${duplicateMatches > 0 ? ` (${duplicateMatches} duplicate${duplicateMatches === 1 ? '' : 's'} ignored)` : ''}. Click "Save trackers" to apply.`;
+    } catch (e) {
+      error = toErrorMessage(e, 'Failed to read the uploaded .txt file');
+    } finally {
+      input.value = '';
     }
-    trackersText = Array.from(existing).join('\n');
-    saved = false;
   }
 
   function clearAll() {
     trackersText = '';
     saved = false;
+    infoMessage = '';
   }
 </script>
 
 <section class="settings-panel" data-keywords="torrent trackers bittorrent torrentio announce p2p magnet seeds peers">
   <div class="section-title">
     <h2>BitTorrent Trackers (Torrentio)</h2>
-    <span class="muted">{parseTrackers(trackersText).length} custom trackers configured</span>
+    <span class="muted">{parseUniqueTrackers(trackersText).unique.length} trackers configured</span>
   </div>
   <p class="muted">
-    Torrentio embeds these announce trackers into every generated magnet link. Adding reliable public or private trackers
-    helps discover more seeders and peers for faster P2P streaming.
+    Upload a <code>.txt</code> file or paste line-separated announce URLs below. All duplicates are automatically
+    detected and removed. Every saved tracker will be embedded into generated magnet links.
   </p>
+
   <div class="field-block">
-    <label for="trackers-textarea" class="field-label">Custom announce tracker list (one per line):</label>
+    <label for="trackers-textarea" class="field-label">Custom announce tracker list (line-separated):</label>
     <textarea
       id="trackers-textarea"
       class="trackers-textarea"
       rows="7"
-      placeholder="udp://tracker.opentrackr.org:1337/announce&#10;udp://open.demonii.com:1337/announce"
+      placeholder="Paste your tracker list here (one per line, e.g. udp://tracker.example.com:1337/announce)"
       bind:value={trackersText}
+      oninput={() => {
+        saved = false;
+        infoMessage = '';
+      }}
     ></textarea>
   </div>
+
+  <input
+    type="file"
+    accept=".txt,text/plain"
+    bind:this={fileInput}
+    style="display: none;"
+    onchange={handleFileUpload}
+  />
+
   <div class="button-row" style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
     <button class="button primary" disabled={busy} onclick={save}>
       {#if busy}
@@ -100,15 +157,23 @@
       {/if}
       {saved ? 'Trackers saved' : 'Save trackers'}
     </button>
-    <button class="button secondary" disabled={busy} onclick={loadRecommended}>
-      <Sparkles size={16} />Load recommended trackers
+    <button class="button secondary" disabled={busy} onclick={() => fileInput?.click()}>
+      <Upload size={16} />Upload .txt file
     </button>
     <button class="button secondary" disabled={busy || !trackersText} onclick={clearAll}>
       <Trash2 size={16} />Clear list
     </button>
   </div>
+
+  {#if infoMessage}
+    <div class="alert info" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+      <ShieldCheck size={16} />
+      <span>{infoMessage}</span>
+    </div>
+  {/if}
+
   {#if error}
-    <div class="alert error" style="margin-top: 10px;">
+    <div class="alert error" style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
       <AlertCircle size={16} />
       <span>{error}</span>
     </div>

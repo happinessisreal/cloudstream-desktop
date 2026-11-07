@@ -11,16 +11,18 @@ fn custom_trackers_save_read_and_filter_correctly() {
     let initial = app.get_custom_trackers().unwrap();
     assert!(initial.is_empty());
 
-    // Save list with comments and whitespace
+    // Save list with comments, whitespace, and duplicates (including casing and trailing slashes)
     let input = vec![
         "udp://tracker.opentrackr.org:1337/announce".to_string(),
         "   udp://open.demonii.com:1337/announce   ".to_string(),
         "".to_string(),
+        "UDP://tracker.opentrackr.org:1337/announce/".to_string(), // duplicate with uppercase and trailing slash
         "udp://explodie.org:6969/announce".to_string(),
+        "udp://open.demonii.com:1337/announce/".to_string(), // duplicate with trailing slash
     ];
     app.save_custom_trackers(&input).unwrap();
 
-    // Verify read
+    // Verify read: exactly 3 unique trackers, zero duplicates
     let read = app.get_custom_trackers().unwrap();
     assert_eq!(read.len(), 3);
     assert_eq!(read[0], "udp://tracker.opentrackr.org:1337/announce");
